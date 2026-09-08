@@ -25,6 +25,10 @@ import {
     generateRefreshToken,
 } from "../../utils/jwt.js";
 
+import {
+    generateUniqueUsername,
+} from "./usernameService.js";
+
 const googleClient = new OAuth2Client();
 
 export const googleAuthService = async ({
@@ -120,7 +124,11 @@ export const googleAuthService = async ({
 
     const email = payload.email;
 
-    const username =
+    const isEmailVerified =
+        payload.email_verified === true ||
+        payload.email_verified === "true";
+
+    const preferredUsername =
         payload.name ||
         email?.split("@")[0];
 
@@ -174,6 +182,15 @@ export const googleAuthService = async ({
 
     }
 
+    if (!isEmailVerified) {
+
+        throw new HttpError(
+            "Google email address is not verified.",
+            401
+        );
+
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Existing Same-Email Account
@@ -197,7 +214,9 @@ export const googleAuthService = async ({
 
     if (
         existingEmailUser &&
-        existingEmailUser.auth_provider === "google"
+        ["google", "apple"].includes(
+            existingEmailUser.auth_provider
+        )
     ) {
 
         if (existingEmailUser.google_id !== googleId) {
@@ -233,6 +252,9 @@ export const googleAuthService = async ({
             profile_completed:
                 Boolean(user.profile_completed),
 
+            account_linked:
+                existingEmailUser.auth_provider === "apple",
+
         };
 
     }
@@ -266,6 +288,12 @@ export const googleAuthService = async ({
 
     const hashedPassword =
         await bcrypt.hash(randomPassword, 10);
+
+    const username =
+        await generateUniqueUsername({
+            preferred: preferredUsername,
+            stableId: googleId,
+        });
 
     const userId =
         await createGoogleUser({

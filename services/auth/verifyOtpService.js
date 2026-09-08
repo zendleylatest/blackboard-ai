@@ -9,6 +9,7 @@ import {
 
 import {
     findUserByEmail,
+    findUserByUsername,
     findUserByIdSafe,
     createUser,
     verifyUser,
@@ -41,6 +42,15 @@ export const verifyOtpService = async ({
 }) => {
     console.log(`[AUTH][VERIFY_OTP] Start email=${maskEmail(email)} otpLength=${String(otp || "").length}`);
 
+    const existingUser = await findUserByEmail(email);
+
+    if (existingUser && Boolean(existingUser.is_verified)) {
+        throw new HttpError(
+            "This email is already verified. Please log in instead.",
+            409
+        );
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Check Pending Registration
@@ -61,6 +71,17 @@ export const verifyOtpService = async ({
             throw new HttpError(
                 "Invalid or expired OTP.",
                 400
+            );
+        }
+
+        const usernameOwner = await findUserByUsername(
+            pendingUser.username
+        );
+
+        if (usernameOwner) {
+            throw new HttpError(
+                "This username was recently taken. Please return to account creation and choose another username.",
+                409
             );
         }
 
@@ -192,7 +213,7 @@ export const verifyOtpService = async ({
     |--------------------------------------------------------------------------
     */
 
-    const user = await findUserByEmail(email);
+    const user = existingUser;
 
     if (!user) {
         console.warn(`[AUTH][VERIFY_OTP] No pending user or existing user email=${maskEmail(email)}`);

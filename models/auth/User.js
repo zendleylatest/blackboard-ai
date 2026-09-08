@@ -49,11 +49,24 @@ export const findUserByEmail = async (email) => {
     const sql = `
         SELECT *
         FROM api_user
-        WHERE email = ?
+        WHERE LOWER(email) = LOWER(?)
         LIMIT 1
     `;
 
     const rows = await executeQuery(sql, [email]);
+
+    return rows[0] || null;
+};
+
+export const findUserByUsername = async (username) => {
+    const sql = `
+        SELECT *
+        FROM api_user
+        WHERE LOWER(username) = LOWER(?)
+        LIMIT 1
+    `;
+
+    const rows = await executeQuery(sql, [username]);
 
     return rows[0] || null;
 };
@@ -367,7 +380,6 @@ export const updateGoogleId = async (
         SET
             google_id = ?
         WHERE id = ?
-        AND auth_provider = 'google'
     `;
 
     await executeQuery(

@@ -23,6 +23,10 @@ import {
     generateRefreshToken,
 } from "../../utils/jwt.js";
 
+import {
+    generateUniqueUsername,
+} from "./usernameService.js";
+
 const appleJwksClient = jwksClient({
     jwksUri: "https://appleid.apple.com/auth/keys",
     cache: true,
@@ -331,10 +335,16 @@ export const appleAuthService = async ({
     |--------------------------------------------------------------------------
     */
 
-    const username =
+    const preferredUsername =
         fullName ||
         userEmail.split("@")[0] ||
         `apple_user_${appleUserId.slice(0, 8)}`;
+
+    const username =
+        await generateUniqueUsername({
+            preferred: preferredUsername,
+            stableId: appleUserId,
+        });
 
     const randomPassword =
         crypto.randomBytes(32).toString("hex");

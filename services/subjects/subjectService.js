@@ -54,10 +54,10 @@ export const enrollUserInSubject = async (
         );
 
     if (existingEnrollment) {
-        throw new HttpError(
-            400,
-            "Already enrolled in this subject"
-        );
+        return {
+            subject,
+            created: false,
+        };
     }
 
     try {
@@ -79,16 +79,19 @@ export const enrollUserInSubject = async (
             error.code === "ER_DUP_ENTRY" ||
             error.code === "23000"
         ) {
-            throw new HttpError(
-                400,
-                "Already enrolled in this subject"
-            );
+            return {
+                subject,
+                created: false,
+            };
         }
 
         throw error;
     }
 
-    return subject;
+    return {
+        subject,
+        created: true,
+    };
 };
 
 export const unenrollUserFromSubject = async (

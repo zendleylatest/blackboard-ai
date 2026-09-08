@@ -16,9 +16,14 @@ import {
 import {
     findPendingUserByEmail,
     deletePendingUserByEmail,
+    deleteExpiredPendingUserByUsername,
     createPendingUser,
     deletePendingUser,
 } from "../../models/auth/PendingUser.js";
+
+import {
+    isUsernameAvailable,
+} from "./usernameService.js";
 
 const maskEmail = (email = "") => {
     const [name, domain] = String(email).split("@");
@@ -53,7 +58,7 @@ export const registerService = async (data) => {
         console.log(`[AUTH][REGISTER] Existing user found email=${maskEmail(email)}`);
 
         throw new HttpError(
-            "An account with this email already exists.",
+            "An account already exists with this email. Please log in or use a different email address.",
             409
         );
 
@@ -61,7 +66,7 @@ export const registerService = async (data) => {
 
     /*
     |--------------------------------------------------------------------------
-    | Remove Existing Pending Registration
+    | Remove Superseded or Expired Pending Registration
     |--------------------------------------------------------------------------
     */
 
@@ -71,6 +76,19 @@ export const registerService = async (data) => {
         console.log(`[AUTH][REGISTER] Removing previous pending user id=${pendingUser.id} email=${maskEmail(email)}`);
 
         await deletePendingUserByEmail(email);
+
+    }
+
+    await deleteExpiredPendingUserByUsername(username);
+
+    const usernameAvailable = await isUsernameAvailable(username);
+
+    if (!usernameAvailable) {
+
+        throw new HttpError(
+            "That username is already taken. Please choose another username.",
+            409
+        );
 
     }
 
@@ -107,9 +125,7 @@ export const registerService = async (data) => {
 
         email,
 
-        username:
-            username ??
-            email.split("@")[0],
+        username,
 
         password: hashedPassword,
 
@@ -138,11 +154,15 @@ export const registerService = async (data) => {
     */
 
     try {
-        await sendOtpEmail({
+        const emailSent = await sendOtpEmail({
             email,
-            username: username ?? email.split("@")[0],
+            username,
             otpCode,
         });
+
+        if (!emailSent) {
+            throw new Error("Email provider rejected the verification email.");
+        }
 
         console.log(`[AUTH][REGISTER] Verification email accepted email=${maskEmail(email)}`);
 

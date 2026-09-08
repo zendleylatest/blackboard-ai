@@ -24,11 +24,24 @@ export const findPendingUserByEmail = async (email) => {
     const sql = `
         SELECT *
         FROM api_pendinguser
-        WHERE email = ?
+        WHERE LOWER(email) = LOWER(?)
         LIMIT 1
     `;
 
     const rows = await executeQuery(sql, [email]);
+
+    return rows[0] || null;
+};
+
+export const findPendingUserByUsername = async (username) => {
+    const sql = `
+        SELECT *
+        FROM api_pendinguser
+        WHERE LOWER(username) = LOWER(?)
+        LIMIT 1
+    `;
+
+    const rows = await executeQuery(sql, [username]);
 
     return rows[0] || null;
 };
@@ -150,7 +163,7 @@ export const deletePendingUserByEmail = async (
 
     const sql = `
         DELETE FROM api_pendinguser
-        WHERE email = ?
+        WHERE LOWER(email) = LOWER(?)
     `;
 
     await executeQuery(
@@ -159,4 +172,21 @@ export const deletePendingUserByEmail = async (
         connection
     );
 
+};
+
+export const deleteExpiredPendingUserByUsername = async (
+    username,
+    connection = null
+) => {
+    const sql = `
+        DELETE FROM api_pendinguser
+        WHERE LOWER(username) = LOWER(?)
+          AND otp_expiry <= NOW()
+    `;
+
+    await executeQuery(
+        sql,
+        [username],
+        connection
+    );
 };

@@ -1,4 +1,3 @@
-import { pipeline } from "@huggingface/transformers";
 import { Pinecone } from "@pinecone-database/pinecone";
 import {
     findRagChunksByIds,
@@ -98,11 +97,20 @@ const makeSource = (row) => ({
 
 const getEmbeddingPipeline = async () => {
     if (!embeddingPipelinePromise) {
-        embeddingPipelinePromise = pipeline(
-            "feature-extraction",
-            process.env.RAG_EMBEDDING_MODEL ||
-                DEFAULT_EMBEDDING_MODEL
-        );
+        // Transformers loads the platform-specific ONNX binary. Keep that
+        // optional dependency behind the vector-retrieval fallback boundary
+        // so an unavailable native binary cannot prevent the API from
+        // starting or block lexical RAG retrieval.
+        embeddingPipelinePromise = import("@huggingface/transformers")
+            .then(({ pipeline }) => pipeline(
+                "feature-extraction",
+                process.env.RAG_EMBEDDING_MODEL ||
+                    DEFAULT_EMBEDDING_MODEL
+            ))
+            .catch((error) => {
+                embeddingPipelinePromise = null;
+                throw error;
+            });
     }
     return embeddingPipelinePromise;
 };

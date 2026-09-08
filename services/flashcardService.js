@@ -362,7 +362,21 @@ export const completeStudy = async (
         const set = await getSetOrThrow(setId, userId, connection);
         const session = await findStudySessionForUser(sessionId, set.id, userId, connection);
         if (!session) throw new HttpError(400, "Session not found.");
-        if (session.completed_at) throw new HttpError(400, "Study session is already complete.");
+        if (session.completed_at) {
+            // Idempotent: a duplicate completion call (e.g. a race between a
+            // manual answer tap and a deferred tilt-gesture callback on the
+            // last card) is not an error from the client's perspective —
+            // return the current state instead of failing the second call.
+            await connection.commit();
+            const mastery = await getSetMastery(set.id, connection);
+            return {
+                completed_total: Number(set.completed_total || 0),
+                mastery,
+                easy_count: session.easy_count || 0,
+                hard_count: session.hard_count || 0,
+                streak_count: Number(set.streak_count || 0),
+            };
+        }
         const events = await findReviewEventsBySession(sessionId, connection);
         const easyCount = events.filter((event) => event.result === "easy").length;
         const hardCount = events.filter((event) => event.result === "hard").length;

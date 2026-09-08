@@ -8,6 +8,7 @@ import app from "./app.js";
 
 import { testConnection } from "./config/database.js";
 import { validateEnvironment } from "./config/env.js";
+import { ensureDefaultAdmin } from "./services/defaultAdminService.js";
 
 const PORT = process.env.PORT || 8000;
 
@@ -17,6 +18,8 @@ const startServer = async () => {
         validateEnvironment();
 
         await testConnection();
+
+        await ensureDefaultAdmin();
 
         app.listen(PORT, () => {
             console.log(

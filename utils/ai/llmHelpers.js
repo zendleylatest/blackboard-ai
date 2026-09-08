@@ -371,7 +371,10 @@ export const extractSourcesMetadata = (fusedItems) => (
                 : null;
             return {
                 chunk_id: Number(item.chunk_id || 0),
-                doc_id: Number(doc.id || 0),
+                // Keep a missing doc id as null rather than coercing to 0 -
+                // the frontend only treats null as "no PDF to open" and would
+                // otherwise try (and fail) to open document id 0.
+                doc_id: doc.id ? Number(doc.id) : null,
                 page: item.page ?? 0,
                 qref: questionNum ? qref : "",
                 question_num: questionNum,

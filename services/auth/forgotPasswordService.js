@@ -47,8 +47,8 @@ export const forgotPasswordService = async ({
     if (!user || user.auth_provider !== "email") {
         const reason = !user ? "user_not_found" : "non_email_provider";
         const message = !user
-            ? "No email account was found for this address."
-            : "This account uses Google sign-in. Please continue with Google instead of resetting a password.";
+            ? "No account was found with this email address. Please check the email or create a new account."
+            : `This account uses ${user.auth_provider === "apple" ? "Apple" : "Google"} sign-in. Please continue with that option instead of resetting a password.`;
 
         console.warn(
             `[AUTH][FORGOT_PASSWORD] No reset email sent email=${maskEmail(email)} reason=${reason}`

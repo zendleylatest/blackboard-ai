@@ -6,6 +6,7 @@ import {
 
 import {
     errorResponse,
+    successResponse,
 } from "../../utils/apiResponse.js";
 import { paginatedResponse } from "../../utils/pagination.js";
 
@@ -49,7 +50,7 @@ export const enrollSubjectController = async (
     res
 ) => {
     try {
-        const subject =
+        const result =
             await enrollUserInSubject(
                 req.user.id,
                 req.params.subject_id
@@ -57,9 +58,14 @@ export const enrollSubjectController = async (
 
         return successResponse(
             res,
-            201,
-            `Successfully enrolled in ${subject.name}`,
-            {}
+            result.created ? 201 : 200,
+            result.created
+                ? `Successfully enrolled in ${result.subject.name}`
+                : `Already enrolled in ${result.subject.name}`,
+            {
+                subject: result.subject,
+                already_enrolled: !result.created,
+            }
         );
     } catch (error) {
         console.error(
