@@ -25,6 +25,9 @@ export const uploadProfileImageController = async (
             200,
             "Profile image uploaded successfully.",
             {
+                profile_image_url:
+                    data.profileImagePath,
+
                 profile_image_path:
                     data.profileImagePath,
             }

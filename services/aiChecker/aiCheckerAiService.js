@@ -1,8 +1,8 @@
-import { Storage } from "@google-cloud/storage";
 import { toFile } from "openai/uploads";
 import HttpError from "../../utils/httpError.js";
 import { getOpenAIClient, getOpenAIModel } from "../../utils/ai/openaiClient.js";
 import { extractToolJson } from "../../utils/ai/llmHelpers.js";
+import { readResourceFile } from "../../utils/localStorage.js";
 
 const CHECKER_TOOL_SCHEMA = {
     name: "return_marking_json",
@@ -138,31 +138,26 @@ export const evaluateAnswerWithAi = async ({
     ].filter(Boolean).join("\n\n");
     const uploadedFileIds = [];
     const userContent = [{ type: "input_text", text: user }];
-    if (process.env.GCS_BUCKET_NAME) {
-        for (const document of sourceDocuments) {
-            if (!document?.gcs_key) continue;
-            try {
-                const [buffer] = await new Storage()
-                    .bucket(process.env.GCS_BUCKET_NAME)
-                    .file(document.gcs_key)
-                    .download();
-                const file = await client.files.create({
-                    file: await toFile(
-                        buffer,
-                        document.title || "document",
-                        { type: document.mime || "application/pdf" }
-                    ),
-                    purpose: "user_data",
-                });
-                uploadedFileIds.push(file.id);
-                userContent.push({
-                    type: "input_text",
-                    text: `Attached source document: ${document.title || "document"}`,
-                });
-                userContent.push({ type: "input_file", file_id: file.id });
-            } catch {
-                // Text and metadata remain usable if a source file is unavailable.
-            }
+    for (const document of sourceDocuments) {
+        if (!document?.gcs_key) continue;
+        try {
+            const buffer = await readResourceFile(document.gcs_key);
+            const file = await client.files.create({
+                file: await toFile(
+                    buffer,
+                    document.title || "document",
+                    { type: document.mime || "application/pdf" }
+                ),
+                purpose: "user_data",
+            });
+            uploadedFileIds.push(file.id);
+            userContent.push({
+                type: "input_text",
+                text: `Attached source document: ${document.title || "document"}`,
+            });
+            userContent.push({ type: "input_file", file_id: file.id });
+        } catch {
+            // Text and metadata remain usable if a source file is unavailable.
         }
     }
     let response;

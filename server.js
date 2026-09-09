@@ -9,6 +9,7 @@ import app from "./app.js";
 import { testConnection } from "./config/database.js";
 import { validateEnvironment } from "./config/env.js";
 import { ensureDefaultAdmin } from "./services/defaultAdminService.js";
+import { ensureStorageDirectories } from "./utils/localStorage.js";
 
 const PORT = process.env.PORT || 8000;
 
@@ -16,6 +17,8 @@ const startServer = async () => {
     try {
 
         validateEnvironment();
+
+        await ensureStorageDirectories();
 
         await testConnection();
 

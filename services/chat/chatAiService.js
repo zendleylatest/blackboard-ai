@@ -1,4 +1,3 @@
-import { Storage } from "@google-cloud/storage";
 import { toFile } from "openai/uploads";
 import HttpError from "../../utils/httpError.js";
 import {
@@ -18,6 +17,7 @@ import {
     formatContextForPrompt,
 } from "../../utils/ai/llmHelpers.js";
 import { retrieveContext } from "../ragService.js";
+import { readResourceFile } from "../../utils/localStorage.js";
 
 const CHAT_TOOL_SCHEMA = {
     name: "propose_chat_answer",
@@ -437,34 +437,29 @@ export const generateChatAssistantResponse = async ({
         type: "input_text",
         text: contextualUserText,
     }];
-    if (process.env.GCS_BUCKET_NAME) {
-        for (const document of sourceDocuments) {
-            if (!document?.gcs_key) continue;
-            try {
-                const [buffer] = await new Storage()
-                    .bucket(process.env.GCS_BUCKET_NAME)
-                    .file(document.gcs_key)
-                    .download();
-                const file = await client.files.create({
-                    file: await toFile(
-                        buffer,
-                        document.title || "source-document.pdf",
-                        { type: "application/pdf" }
-                    ),
-                    purpose: "user_data",
-                });
-                uploadedFileIds.push(file.id);
-                lastUserContent.push({
-                    type: "input_text",
-                    text: `Attached source document: ${document.title || "document"}`,
-                });
-                lastUserContent.push({
-                    type: "input_file",
-                    file_id: file.id,
-                });
-            } catch {
-                // Keep text/RAG fallback usable if a source file is unavailable.
-            }
+    for (const document of sourceDocuments) {
+        if (!document?.gcs_key) continue;
+        try {
+            const buffer = await readResourceFile(document.gcs_key);
+            const file = await client.files.create({
+                file: await toFile(
+                    buffer,
+                    document.title || "source-document.pdf",
+                    { type: "application/pdf" }
+                ),
+                purpose: "user_data",
+            });
+            uploadedFileIds.push(file.id);
+            lastUserContent.push({
+                type: "input_text",
+                text: `Attached source document: ${document.title || "document"}`,
+            });
+            lastUserContent.push({
+                type: "input_file",
+                file_id: file.id,
+            });
+        } catch {
+            // Keep text/RAG fallback usable if a source file is unavailable.
         }
     }
     const input = chatMessages.map((message, index) => ({

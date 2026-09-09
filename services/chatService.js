@@ -1,4 +1,3 @@
-import { Storage } from "@google-cloud/storage";
 import crypto from "crypto";
 import HttpError from "../utils/httpError.js";
 import {
@@ -26,11 +25,11 @@ import {
     findMcqReviewDocuments,
 } from "../models/document/Document.js";
 import { generateChatAssistantResponse } from "./chat/chatAiService.js";
-
-const getStorage = () => {
-    if (!process.env.GCS_BUCKET_NAME) return null;
-    return new Storage();
-};
+import {
+    readResourceFile,
+    sanitizeStorageFilename,
+    writeResourceFile,
+} from "../utils/localStorage.js";
 
 const parseJson = (value, fallback) => {
     if (value && typeof value === "object") return value;
@@ -60,12 +59,8 @@ const getPaperContext = async (documentId) => {
     if (!documentId) return "";
     try {
         const document = await findDocumentById(documentId);
-        if (!document?.gcs_key || !process.env.GCS_BUCKET_NAME) return "";
-        const storage = getStorage();
-        const [buffer] = await storage
-            .bucket(process.env.GCS_BUCKET_NAME)
-            .file(document.gcs_key)
-            .download();
+        if (!document?.gcs_key) return "";
+        const buffer = await readResourceFile(document.gcs_key);
         const text = buffer.toString("utf8").slice(0, 25000);
         return `Referenced past paper: ${document.title || "Past Paper"}\n${text}`;
     } catch {
@@ -366,11 +361,10 @@ export const uploadChatAttachment = async (
 ) => {
     await getThreadOrThrow(userId, threadId);
     if (!file) throw new HttpError(400, "file is required");
-    const storage = getStorage();
-    if (!storage) throw new HttpError(503, "File storage is not configured.");
     const id = crypto.randomUUID();
     const kind = classifyAttachment(file.originalname, file.mimetype);
-    const key = `chat_temp/${threadId}/${id}/${file.originalname}`;
+    const filename = sanitizeStorageFilename(file.originalname, "attachment");
+    const key = `chat_temp/${threadId}/${id}/${filename}`;
     const attachment = await createChatAttachment({
         id,
         threadId,
@@ -383,10 +377,7 @@ export const uploadChatAttachment = async (
         gcsKey: key,
     });
     try {
-        await storage.bucket(process.env.GCS_BUCKET_NAME).file(key).save(file.buffer, {
-            resumable: false,
-            metadata: { contentType: file.mimetype || "application/octet-stream" },
-        });
+        await writeResourceFile(key, file.buffer);
         const updated = await updateChatAttachment(
             id,
             threadId,
@@ -411,15 +402,11 @@ export const downloadChatAttachment = async (
         userId
     );
     if (!attachment) throw new HttpError(404, "Attachment not found.");
-    if (!attachment.gcs_key || !process.env.GCS_BUCKET_NAME) {
+    if (!attachment.gcs_key) {
         throw new HttpError(404, "File not found in storage.");
     }
-    const storage = getStorage();
     try {
-        const [buffer] = await storage
-            .bucket(process.env.GCS_BUCKET_NAME)
-            .file(attachment.gcs_key)
-            .download();
+        const buffer = await readResourceFile(attachment.gcs_key);
         return {
             buffer,
             mime: attachment.mime || "application/octet-stream",

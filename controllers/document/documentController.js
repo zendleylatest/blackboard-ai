@@ -2,9 +2,8 @@ import {
     listDocuments,
     getSubjectDocuments,
     getDocumentDetail,
-    generateDocumentSignedUrl,
     getDocumentForStreaming,
-    getDocumentBlob,
+    getDocumentFile,
     getMcqAnswerKey,
 } from "../../services/document/documentService.js";
 
@@ -15,7 +14,10 @@ import {
 
 import HttpError from "../../utils/httpError.js";
 
-import { Readable } from "stream";
+import {
+    createResourceReadStream,
+    readResourceFile,
+} from "../../utils/localStorage.js";
 
 
 /*
@@ -141,46 +143,6 @@ export const getDocumentDetailController = async (
 
 /*
 |--------------------------------------------------------------------------
-| GET /documents/:document_id/signed-url/
-|--------------------------------------------------------------------------
-*/
-
-export const documentSignedUrlController = async (
-    req,
-    res
-) => {
-
-    try {
-
-        const ttl =
-            Number(req.query.ttl || 600);
-
-        const result =
-            await generateDocumentSignedUrl(
-                req.params.document_id,
-                ttl
-            );
-
-        return successResponse(
-            res,
-            200,
-            "Signed URL generated successfully",
-            result
-        );
-
-    } catch (error) {
-
-        return errorResponse(
-            res,
-            error.statusCode || 500,
-            error.message
-        );
-    }
-};
-
-
-/*
-|--------------------------------------------------------------------------
 | GET /documents/:doc_id/content/
 |--------------------------------------------------------------------------
 */
@@ -199,14 +161,22 @@ export const documentContentController = async (
             );
 
         const {
-            blob,
+            filePath,
             metadata,
-        } = await getDocumentBlob(
+        } = await getDocumentFile(
             document.gcs_key
         );
 
         const total =
             Number(metadata.size || 0);
+
+        if (total === 0) {
+            return res.status(200).set({
+                "Content-Type": "application/pdf",
+                "Content-Length": "0",
+                "Accept-Ranges": "bytes",
+            }).end();
+        }
 
         const rangeHeader =
             req.headers.range;
@@ -261,7 +231,10 @@ export const documentContentController = async (
                     requestedStart ?? 0;
 
                 end =
-                    requestedEnd ?? total - 1;
+                    Math.min(
+                        requestedEnd ?? total - 1,
+                        total - 1
+                    );
             }
 
             if (
@@ -285,7 +258,7 @@ export const documentContentController = async (
             end - start + 1;
 
         const readStream =
-            blob.createReadStream({
+            createResourceReadStream(filePath, {
                 start,
                 end,
             });
@@ -375,9 +348,9 @@ export const documentDownloadController = async (
             );
 
         const {
-            blob,
+            filePath,
             metadata,
-        } = await getDocumentBlob(
+        } = await getDocumentFile(
             document.gcs_key
         );
 
@@ -402,7 +375,7 @@ export const documentDownloadController = async (
         });
 
         const readStream =
-            blob.createReadStream();
+            createResourceReadStream(filePath);
 
         readStream.on(
             "error",
@@ -454,9 +427,9 @@ export const debugDocumentAccessController = async (
             );
 
         const {
-            blob,
+            filePath,
             metadata,
-        } = await getDocumentBlob(
+        } = await getDocumentFile(
             document.gcs_key
         );
 
@@ -468,21 +441,14 @@ export const debugDocumentAccessController = async (
             doc_title:
                 document.title,
 
-            gcs_key:
+            storage_key:
                 document.gcs_key,
 
-            bucket_name:
-                process.env.GCS_BUCKET_NAME,
-
-            blob_exists:
+            file_exists:
                 true,
 
-            blob_size:
+            file_size:
                 Number(metadata.size || 0),
-
-            service_account:
-                process.env.RUN_SERVICE_ACCOUNT_EMAIL ||
-                "not_set",
         };
 
         const size =
@@ -490,15 +456,9 @@ export const debugDocumentAccessController = async (
 
         if (size > 0) {
 
-            const [
-                sampleData,
-            ] = await blob.download({
-                start: 0,
-                end: Math.min(
-                    99,
-                    size - 1
-                ),
-            });
+            const sampleData =
+                (await readResourceFile(document.gcs_key))
+                    .subarray(0, Math.min(100, size));
 
             debugInfo.sample_length =
                 sampleData.length;

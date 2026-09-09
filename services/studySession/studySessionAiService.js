@@ -1,10 +1,10 @@
-import { Storage } from "@google-cloud/storage";
 import { toFile } from "openai/uploads";
 import HttpError from "../../utils/httpError.js";
 import { getOpenAIClient, getOpenAIModel } from "../../utils/ai/openaiClient.js";
 import { extractToolJson } from "../../utils/ai/llmHelpers.js";
 import { evaluateAnswerWithAi } from "../aiChecker/aiCheckerAiService.js";
 import { findQuestionMappingsByDocument } from "../../models/AiChecker.js";
+import { readResourceFile } from "../../utils/localStorage.js";
 
 const EXTRACTION_SCHEMA = {
     name: "return_extracted_questions",
@@ -53,19 +53,11 @@ const FOLLOWUP_SCHEMA = {
     },
 };
 
-const getStorage = () => (
-    process.env.GCS_BUCKET_NAME ? new Storage() : null
-);
-
 const downloadDocument = async (document) => {
-    if (!document?.gcs_key || !process.env.GCS_BUCKET_NAME) {
+    if (!document?.gcs_key) {
         throw new HttpError(503, "Document storage is not configured.");
     }
-    const [buffer] = await getStorage()
-        .bucket(process.env.GCS_BUCKET_NAME)
-        .file(document.gcs_key)
-        .download();
-    return buffer;
+    return readResourceFile(document.gcs_key);
 };
 
 const uploadOpenAiFile = async (client, document) => {

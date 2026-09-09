@@ -1,6 +1,9 @@
 import crypto from "crypto";
-import { Storage } from "@google-cloud/storage";
 import HttpError from "../utils/httpError.js";
+import {
+    sanitizeStorageFilename,
+    writeResourceFile,
+} from "../utils/localStorage.js";
 import { findDocumentById } from "../models/document/Document.js";
 import { findSubjectById } from "../models/ChatThread.js";
 import { findQuestionMappingsByDocument } from "../models/AiChecker.js";
@@ -348,17 +351,9 @@ export const uploadStudySessionAttachment = async (
 ) => {
     await getSessionOrThrow(userId, sessionId);
     if (!file) throw new HttpError(400, "file is required");
-    if (!process.env.GCS_BUCKET_NAME) {
-        throw new HttpError(503, "File storage is not configured.");
-    }
-    const key = `study_session_temp/${String(sessionId).replace(/-/g, "")}/${crypto.randomUUID().slice(0, 8)}_${file.originalname}`;
-    await new Storage()
-        .bucket(process.env.GCS_BUCKET_NAME)
-        .file(key)
-        .save(file.buffer, {
-            resumable: false,
-            metadata: { contentType: file.mimetype || "application/octet-stream" },
-        });
+    const filename = sanitizeStorageFilename(file.originalname, "attachment");
+    const key = `study_session_temp/${String(sessionId).replace(/-/g, "")}/${crypto.randomUUID().slice(0, 8)}_${filename}`;
+    await writeResourceFile(key, file.buffer);
     return {
         gcs_key: key,
         filename: file.originalname,

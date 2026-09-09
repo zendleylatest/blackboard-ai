@@ -10,22 +10,8 @@ import {
 } from "../../models/document/Document.js";
 
 
-import { generateSignedUrl } from "../../utils/gcs.js";
-
 import HttpError from "../../utils/httpError.js";
-
-import { Storage } from "@google-cloud/storage";
-
-const storage = new Storage();
-
-const GCS_BUCKET_NAME =
-    process.env.GCS_BUCKET_NAME;
-
-if (!GCS_BUCKET_NAME) {
-    throw new Error(
-        "GCS_BUCKET_NAME environment variable is required"
-    );
-}
+import { getResourceFile } from "../../utils/localStorage.js";
 
 
 /*
@@ -129,46 +115,6 @@ export const getDocumentDetail = async (
 
 /*
 |--------------------------------------------------------------------------
-| Generate Signed URL
-|--------------------------------------------------------------------------
-*/
-
-export const generateDocumentSignedUrl = async (
-    documentId,
-    ttl = 600
-) => {
-
-    const document = await findDocumentById(
-        documentId
-    );
-
-    if (!document) {
-        throw new HttpError(
-            404,
-            "Document not found"
-        );
-    }
-
-    if (!document.gcs_key) {
-        throw new HttpError(
-            400,
-            "Document does not have a GCS object key"
-        );
-    }
-
-    const url = await generateSignedUrl(
-        document.gcs_key,
-        ttl
-    );
-
-    return {
-        url,
-    };
-};
-
-
-/*
-|--------------------------------------------------------------------------
 | Get Document For Streaming
 |--------------------------------------------------------------------------
 */
@@ -225,37 +171,14 @@ export const getDocumentForStreaming = async (
 
 /*
 |--------------------------------------------------------------------------
-| Get GCS Blob
+| Get Local Document File
 |--------------------------------------------------------------------------
 */
 
-export const getDocumentBlob = async (
-    gcsKey
+export const getDocumentFile = async (
+    storageKey
 ) => {
-
-    const bucket =
-        storage.bucket(GCS_BUCKET_NAME);
-
-    const blob =
-        bucket.file(gcsKey);
-
-    const [exists] =
-        await blob.exists();
-
-    if (!exists) {
-        throw new HttpError(
-            404,
-            "File not found"
-        );
-    }
-
-    const [metadata] =
-        await blob.getMetadata();
-
-    return {
-        blob,
-        metadata,
-    };
+    return getResourceFile(storageKey);
 };
 
 
@@ -358,7 +281,7 @@ const formatDocument = (document) => {
 
         /*
         |--------------------------------------------------------------------------
-        | GCS key remains internal.
+        | Storage key remains internal.
         |--------------------------------------------------------------------------
         |
         | Do not expose the private storage object key unnecessarily.

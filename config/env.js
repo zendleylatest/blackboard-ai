@@ -13,6 +13,7 @@ export const DB_PASSWORD = process.env.DB_PASSWORD;
 export const DB_HOST = process.env.DB_HOST;
 export const DB_PORT = process.env.DB_PORT || 3306;
 export const INSTANCE_CONNECTION_NAME = process.env.INSTANCE_CONNECTION_NAME;
+export const LOCAL_STORAGE_ROOT = process.env.LOCAL_STORAGE_ROOT;
 
 // JWT
 export const JWT_SECRET = process.env.JWT_SECRET || process.env.SECRET_KEY;
@@ -24,12 +25,13 @@ const requiredServerEnv = [
     "DB_PASSWORD",
     "DB_HOST",
     "DB_PORT",
+    "LOCAL_STORAGE_ROOT",
 ];
 
 const optionalFeatureEnv = [
     "OPENAI_API_KEY",
     "GOOGLE_CLIENT_ID",
-    "GCS_BUCKET_NAME",
+    "PUBLIC_BASE_URL",
     "APPLE_BUNDLE_ID",
     "REVENUECAT_WEBHOOK_AUTH_KEY",
 ];

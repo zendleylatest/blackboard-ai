@@ -4,14 +4,12 @@ import {
     listDocumentsValidation,
     documentIdValidation,
     docIdValidation,
-    signedUrlValidation,
     getSubjectDocumentsValidation,
 } from "../validations/document/documentValidation.js";
 
 import {
     listDocumentsController,
     getDocumentDetailController,
-    documentSignedUrlController,
     documentContentController,
     documentDownloadController,
     debugDocumentAccessController,
@@ -43,16 +41,7 @@ router.get(
     getDocumentDetailController
 );
 
-// Get signed GCS URL
-router.get(
-    "/documents/:document_id/signed-url/",
-    authenticate,
-    signedUrlValidation,
-    validate,
-    documentSignedUrlController
-);
-
-// Stream document content
+// Stream authenticated local document content
 router.get(
     "/documents/:doc_id/content/",
     authenticate,

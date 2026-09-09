@@ -1,8 +1,10 @@
 import HttpError from "../../utils/httpError.js";
 
+import crypto from "crypto";
 import {
-    uploadProfileImage,
-} from "../../utils/gcs.js";
+    profileImageUrl,
+    writeProfileImage,
+} from "../../utils/localStorage.js";
 
 import {
     updateProfileImage,
@@ -95,11 +97,16 @@ export const uploadProfileImageService = async (
     // UPLOAD IMAGE
     // ======================================================
 
+    const storageKey =
+        `${userId}/${crypto.randomUUID()}.${fileExtension}`;
+
+    await writeProfileImage(
+        storageKey,
+        file.buffer
+    );
+
     const profileImagePath =
-        await uploadProfileImage(
-            file,
-            userId
-        );
+        profileImageUrl(storageKey);
 
     // ======================================================
     // UPDATE PROFILE
