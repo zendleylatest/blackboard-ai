@@ -21,6 +21,7 @@ import {
     createStudySession,
     findStudySessionForUser,
     createReviewEvent,
+    findReviewEventForCard,
     findFlashcardInSet,
     updateReviewedCard,
     findAverageLeitnerBox,
@@ -331,6 +332,15 @@ export const submitReviewEvent = async (
         if (session.completed_at) throw new HttpError(400, "Study session is already complete.");
         const card = await findFlashcardInSet(cardId, set.id, connection);
         if (!card) throw new HttpError(400, "Card does not belong to this set.");
+        const existingEvent = await findReviewEventForCard(
+            session.id,
+            card.id,
+            connection
+        );
+        if (existingEvent) {
+            await connection.commit();
+            return {};
+        }
         const now = new Date();
         await updateReviewedCard(card.id, normalizedResult, now, connection);
         await createReviewEvent({ sessionId, cardId: card.id, result: normalizedResult, reviewedAt: now }, connection);
@@ -347,8 +357,13 @@ export const submitReviewEvent = async (
 };
 
 const dateKey = (value) => {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+        return value.slice(0, 10);
+    }
     const date = new Date(value);
-    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
 };
 
 export const completeStudy = async (

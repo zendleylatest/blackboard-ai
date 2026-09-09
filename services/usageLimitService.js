@@ -44,6 +44,15 @@ const FEATURE_LIMITS = {
     },
 };
 
+const PER_QUESTION_LIMITS = {
+    answer_revisions: { free: 2, plus: 3, pro: 999999 },
+    followup_messages: { free: 3, plus: 5, pro: 999999 },
+};
+
+export const WEEKLY_USAGE_COLUMNS = Object.freeze(
+    Object.values(FEATURE_LIMITS).map((feature) => feature.column)
+);
+
 const formatDate = (date) => [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, "0"),
@@ -55,14 +64,32 @@ const normalizeDate = (value) => {
     return String(value).slice(0, 10);
 };
 
-const nextFriday = () => {
-    const date = new Date();
+export const nextFriday = (from = new Date()) => {
+    const date = new Date(from);
     const day = date.getDay();
     let days = (5 - day + 7) % 7;
-    if (days === 0 && day !== 5) days = 7;
+    // Friday starts a new seven-day allowance; the next reset is the
+    // following Friday, never later the same day.
+    if (days === 0) days = 7;
     date.setDate(date.getDate() + days);
     return formatDate(date);
 };
+
+export const limitsForTier = (tier) => ({
+    flashcard_sets: FEATURE_LIMITS.flashcard_sets.limits[tier],
+    quizzes: FEATURE_LIMITS.quizzes.limits[tier],
+    ai_checker: FEATURE_LIMITS.ai_checker.limits[tier],
+    past_paper_questions: FEATURE_LIMITS.past_paper_questions.limits[tier],
+    study_sessions: FEATURE_LIMITS.study_sessions.limits[tier],
+    chat_messages: FEATURE_LIMITS.chat_messages.limits[tier],
+    mcq_wrong_reviews: FEATURE_LIMITS.mcq_wrong_reviews.limits[tier],
+    answer_revisions_per_question: PER_QUESTION_LIMITS.answer_revisions[tier],
+    followup_messages_per_question: PER_QUESTION_LIMITS.followup_messages[tier],
+});
+
+export const shouldResetUsage = (currentWeekEnd, from = new Date()) => (
+    !currentWeekEnd || normalizeDate(currentWeekEnd) <= formatDate(from)
+);
 
 const getTier = async (userId) => {
     const rows = await executeQuery(
@@ -138,26 +165,22 @@ const getOrCreateUsage = async (userId) => {
     }
 
     const usage = rows[0];
-    const today = formatDate(new Date());
-    if (!usage.current_week_end || normalizeDate(usage.current_week_end) < today) {
+    if (shouldResetUsage(usage.current_week_end)) {
+        const newWeekEnd = nextFriday();
         await executeQuery(
             `
             UPDATE api_userusagelimit
-            SET flashcard_sets_created = 0,
-                quizzes_created = 0,
-                ai_checker_uses = 0,
-                past_paper_questions_used = 0,
-                study_sessions_created = 0,
-                chat_messages_sent = 0,
-                mcq_wrong_reviews_used = 0,
+            SET ${WEEKLY_USAGE_COLUMNS.map((column) => `${column} = 0`).join(",\n                ")},
                 current_week_end = ?,
                 updated_at = NOW()
             WHERE user_id = ?
             `,
-            [nextFriday(), userId]
+            [newWeekEnd, userId]
         );
-        usage.flashcard_sets_created = 0;
-        usage.current_week_end = nextFriday();
+        for (const column of WEEKLY_USAGE_COLUMNS) {
+            usage[column] = 0;
+        }
+        usage.current_week_end = newWeekEnd;
     }
     return usage;
 };
@@ -213,11 +236,6 @@ export const incrementUsage = async (userId, featureName, count = 1) => {
     );
 };
 
-const PER_QUESTION_LIMITS = {
-    answer_revisions: { free: 2, plus: 3, pro: 999999 },
-    followup_messages: { free: 3, plus: 5, pro: 999999 },
-};
-
 export const checkSessionQuestionLimit = async (
     userId,
     questionId,
@@ -226,7 +244,9 @@ export const checkSessionQuestionLimit = async (
     const limits = PER_QUESTION_LIMITS[featureName];
     if (!limits) return { allowed: true };
     const tier = await getTier(userId);
-    const limit = limits[tier] || limits.free;
+    const ios = await isIosUser(userId);
+    const limitTier = tier === "free" && ios ? "plus" : tier;
+    const limit = limits[limitTier] || limits.free;
     if (tier === "pro") return { allowed: true, tier };
     const rows = await executeQuery(
         `
@@ -285,6 +305,9 @@ export const getUsageLimitSnapshot = async (userId) => {
     const ios = await isIosUser(userId);
     const usage = await getOrCreateUsage(userId);
     const limitTier = tier === "free" && ios ? "plus" : tier;
+    const serverNow = new Date();
+    const weekEndDate = normalizeDate(usage.current_week_end);
+    const resetAt = new Date(`${weekEndDate}T00:00:00`);
     return {
         flashcard_sets_created: Number(usage.flashcard_sets_created || 0),
         quizzes_created: Number(usage.quizzes_created || 0),
@@ -293,16 +316,17 @@ export const getUsageLimitSnapshot = async (userId) => {
         study_sessions_created: Number(usage.study_sessions_created || 0),
         chat_messages_sent: Number(usage.chat_messages_sent || 0),
         mcq_wrong_reviews_used: Number(usage.mcq_wrong_reviews_used || 0),
-        week_end_date: normalizeDate(usage.current_week_end),
+        week_end_date: weekEndDate,
+        reset_at: Number.isNaN(resetAt.getTime()) ? null : resetAt.toISOString(),
+        server_time: serverNow.toISOString(),
+        reset_period: "weekly",
         tier,
-        limits: {
-            flashcard_sets: FEATURE_LIMITS.flashcard_sets.limits[limitTier],
-            quizzes: { free: 3, plus: 15, pro: 999999 }[limitTier],
-            ai_checker: FEATURE_LIMITS.ai_checker.limits[limitTier],
-            past_paper_questions: FEATURE_LIMITS.past_paper_questions.limits[limitTier],
-            study_sessions: FEATURE_LIMITS.study_sessions.limits[limitTier],
-            chat_messages: FEATURE_LIMITS.chat_messages.limits[limitTier],
-            mcq_wrong_reviews: FEATURE_LIMITS.mcq_wrong_reviews.limits[limitTier],
+        effective_tier: limitTier,
+        limits: limitsForTier(limitTier),
+        plan_limits: {
+            free: limitsForTier("free"),
+            plus: limitsForTier("plus"),
+            pro: limitsForTier("pro"),
         },
     };
 };

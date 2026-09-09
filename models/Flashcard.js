@@ -326,6 +326,25 @@ export const createReviewEvent = async (
     );
 };
 
+export const findReviewEventForCard = async (
+    sessionId,
+    cardId,
+    connection = null
+) => {
+    const rows = await executeQuery(
+        `
+        SELECT id
+        FROM api_flashcardreviewevent
+        WHERE session_id = ? AND card_id = ?
+        LIMIT 1
+        `,
+        [sessionId, cardId],
+        connection
+    );
+
+    return rows[0] || null;
+};
+
 export const findFlashcardInSet = async (
     cardId,
     setId,

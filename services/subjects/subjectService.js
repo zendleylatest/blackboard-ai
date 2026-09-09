@@ -115,10 +115,10 @@ export const unenrollUserFromSubject = async (
     );
 
     if (!enrollment) {
-        throw new HttpError(
-            400,
-            "Not enrolled in this subject"
-        );
+        return {
+            subject,
+            deletedChatThreads: 0,
+        };
     }
 
     await deleteUserSubject(
