@@ -83,6 +83,24 @@ const makeResponsesTool = (schema) => ({
     parameters: schema.parameters,
 });
 
+const imageMimeForAttachment = (attachment) => {
+    const declared = String(attachment?.mime || "").toLowerCase();
+    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(declared)) {
+        return declared;
+    }
+    const extension = String(attachment?.original_filename || "")
+        .toLowerCase()
+        .split(".")
+        .pop();
+    return {
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+        gif: "image/gif",
+    }[extension] || null;
+};
+
 const normalizeGate = (gate) => ({
     ...gate,
     is_conversational: gate.is_conversational === true ||
@@ -348,6 +366,7 @@ export const generateChatAssistantResponse = async ({
     const relevanceThreshold = Number(process.env.GATING_RELEVANCE_THRESHOLD || 30);
     const shouldSwitch = Boolean(
         subjectCode &&
+        attachments.length === 0 &&
         !overrideGating &&
         !gate.is_conversational &&
         (
@@ -401,7 +420,7 @@ export const generateChatAssistantResponse = async ({
         "When referencing past papers, cite the year, paper, page, or question reference when available.",
         "Return the response only through the propose_chat_answer tool.",
         attachments.length > 0
-            ? `The student attached: ${attachments.map((item) => item.original_filename).join(", ")}. Acknowledge the files without pretending to have read content that is not included.`
+            ? `The student attached: ${attachments.map((item) => item.original_filename).join(", ")}. Analyze any attached images directly and use their visible text, diagrams, handwriting, and other relevant content in your answer.`
             : "",
         mode === "checker"
             ? "Preserve and explain any AI Checker evaluation context from previous messages."
@@ -437,6 +456,37 @@ export const generateChatAssistantResponse = async ({
         type: "input_text",
         text: contextualUserText,
     }];
+    const completionLastUserContent = [{
+        type: "text",
+        text: contextualUserText,
+    }];
+    for (const attachment of attachments) {
+        if (!attachment?.gcs_key) continue;
+        const imageMime = imageMimeForAttachment(attachment);
+        if (!imageMime) continue;
+        try {
+            const buffer = await readResourceFile(attachment.gcs_key);
+            const imageUrl = `data:${imageMime};base64,${buffer.toString("base64")}`;
+            lastUserContent.push({
+                type: "input_image",
+                image_url: imageUrl,
+                detail: "auto",
+            });
+            completionLastUserContent.push({
+                type: "image_url",
+                image_url: { url: imageUrl, detail: "auto" },
+            });
+        } catch {
+            lastUserContent.push({
+                type: "input_text",
+                text: `The attached image ${attachment.original_filename || "image"} could not be read.`,
+            });
+            completionLastUserContent.push({
+                type: "text",
+                text: `The attached image ${attachment.original_filename || "image"} could not be read.`,
+            });
+        }
+    }
     for (const document of sourceDocuments) {
         if (!document?.gcs_key) continue;
         try {
@@ -471,6 +521,12 @@ export const generateChatAssistantResponse = async ({
                 text: message.content,
             }],
     }));
+    const completionMessages = chatMessages.map((message, index) => ({
+        role: message.role,
+        content: index === chatMessages.length - 1
+            ? completionLastUserContent
+            : message.content,
+    }));
 
     let result;
     try {
@@ -478,7 +534,7 @@ export const generateChatAssistantResponse = async ({
             client,
             model: getOpenAIModel(),
             input,
-            chatMessages,
+            chatMessages: completionMessages,
             mode,
         });
     } finally {

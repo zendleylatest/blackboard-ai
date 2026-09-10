@@ -61,6 +61,24 @@ const CHECKER_TOOL_SCHEMA = {
     },
 };
 
+const imageMimeForDocument = (document) => {
+    const declared = String(document?.mime || "").toLowerCase();
+    if (["image/jpeg", "image/png", "image/webp", "image/gif"].includes(declared)) {
+        return declared;
+    }
+    const extension = String(document?.title || "")
+        .toLowerCase()
+        .split(".")
+        .pop();
+    return {
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+        gif: "image/gif",
+    }[extension] || null;
+};
+
 const normalizeResult = (payload, fallbackQuestion, fallbackMarks) => {
     if (!payload || typeof payload !== "object") {
         throw new HttpError(502, "AI returned invalid evaluation data.");
@@ -125,6 +143,7 @@ export const evaluateAnswerWithAi = async ({
         markSchemeText
             ? "Follow the supplied mark scheme literally and do not invent additional marking points."
             : "Create a reasonable explicit rubric before awarding marks.",
+        "Treat visible work in attached images as part of the student's answer and examine it carefully.",
         "Explain every awarded or deducted mark and return only through the provided function.",
     ].join(" ");
     const user = [
@@ -138,10 +157,25 @@ export const evaluateAnswerWithAi = async ({
     ].filter(Boolean).join("\n\n");
     const uploadedFileIds = [];
     const userContent = [{ type: "input_text", text: user }];
+    const completionUserContent = [{ type: "text", text: user }];
     for (const document of sourceDocuments) {
         if (!document?.gcs_key) continue;
         try {
             const buffer = await readResourceFile(document.gcs_key);
+            const imageMime = imageMimeForDocument(document);
+            if (imageMime) {
+                const imageUrl = `data:${imageMime};base64,${buffer.toString("base64")}`;
+                userContent.push({
+                    type: "input_image",
+                    image_url: imageUrl,
+                    detail: "auto",
+                });
+                completionUserContent.push({
+                    type: "image_url",
+                    image_url: { url: imageUrl, detail: "auto" },
+                });
+                continue;
+            }
             const file = await client.files.create({
                 file: await toFile(
                     buffer,
@@ -192,7 +226,7 @@ export const evaluateAnswerWithAi = async ({
             model: getOpenAIModel(),
             messages: [
                 { role: "system", content: system },
-                { role: "user", content: user },
+                { role: "user", content: completionUserContent },
             ],
             tools: [{
                 type: "function",
