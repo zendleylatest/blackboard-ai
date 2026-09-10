@@ -38,7 +38,7 @@ export const registerService = async (data) => {
         username,
         password,
         full_name,
-        age,
+        age = null,
         class_level,
         exam_board = "cambridge",
         subject_ids = [],

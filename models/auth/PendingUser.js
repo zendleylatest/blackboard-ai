@@ -85,7 +85,7 @@ export const createPendingUser = async (
             pendingUser.username,
             pendingUser.password,
             pendingUser.fullName,
-            pendingUser.age,
+            pendingUser.age ?? null,
             pendingUser.classLevel,
             pendingUser.examBoard,
             JSON.stringify(pendingUser.subjectIds),

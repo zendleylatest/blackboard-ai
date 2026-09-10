@@ -192,10 +192,12 @@ export const checkUsageLimit = async (userId, featureName) => {
     }
     const tier = await getTier(userId);
     if (tier === "pro") return { allowed: true, message: null, tier };
-    const ios = await isIosUser(userId);
+    const [ios, usage] = await Promise.all([
+        isIosUser(userId),
+        getOrCreateUsage(userId),
+    ]);
     const limitTier = tier === "free" && ios ? "plus" : tier;
     const limit = feature.limits[limitTier] || feature.limits.free;
-    const usage = await getOrCreateUsage(userId);
     const current = Number(usage[feature.column] || 0);
     if (current >= limit) {
         const normalizedResetDate = normalizeDate(usage.current_week_end);
@@ -243,8 +245,7 @@ export const checkSessionQuestionLimit = async (
 ) => {
     const limits = PER_QUESTION_LIMITS[featureName];
     if (!limits) return { allowed: true };
-    const tier = await getTier(userId);
-    const ios = await isIosUser(userId);
+    const [tier, ios] = await Promise.all([getTier(userId), isIosUser(userId)]);
     const limitTier = tier === "free" && ios ? "plus" : tier;
     const limit = limits[limitTier] || limits.free;
     if (tier === "pro") return { allowed: true, tier };
@@ -301,9 +302,11 @@ export const incrementSessionQuestionUsage = async (
 };
 
 export const getUsageLimitSnapshot = async (userId) => {
-    const tier = await getTier(userId);
-    const ios = await isIosUser(userId);
-    const usage = await getOrCreateUsage(userId);
+    const [tier, ios, usage] = await Promise.all([
+        getTier(userId),
+        isIosUser(userId),
+        getOrCreateUsage(userId),
+    ]);
     const limitTier = tier === "free" && ios ? "plus" : tier;
     const serverNow = new Date();
     const weekEndDate = normalizeDate(usage.current_week_end);

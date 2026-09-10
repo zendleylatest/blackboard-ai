@@ -61,7 +61,7 @@ export const createUserProfile = async (
         [
             profile.userId,
             profile.fullName,
-            profile.age,
+            profile.age ?? null,
             profile.classLevel,
             profile.examBoard,
             profile.profilePicUrl ?? null,
@@ -98,7 +98,7 @@ export const updateUserProfile = async (
         sql,
         [
             profile.fullName,
-            profile.age,
+            profile.age ?? null,
             profile.classLevel,
             profile.examBoard,
             profile.userId,

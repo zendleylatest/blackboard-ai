@@ -1,7 +1,9 @@
 import {
     deleteManagedUser,
     deleteManagedUsers,
+    getManagedUser,
     getManagedUsers,
+    updateManagedUser,
 } from "../services/adminUserService.js";
 
 export const listManagedUsersController = async (req, res, next) => {
@@ -12,6 +14,32 @@ export const listManagedUsersController = async (req, res, next) => {
             pageSize: req.query.page_size,
         });
         return res.status(200).json({ success: true, ...data });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getManagedUserController = async (req, res, next) => {
+    try {
+        const user = await getManagedUser(req.params.userId);
+        return res.status(200).json({ success: true, user });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateManagedUserController = async (req, res, next) => {
+    try {
+        const user = await updateManagedUser({
+            targetUserId: req.params.userId,
+            updates: req.body,
+            adminUserId: req.user?.id,
+        });
+        return res.status(200).json({
+            success: true,
+            message: "User updated successfully.",
+            user,
+        });
     } catch (error) {
         next(error);
     }

@@ -6,7 +6,9 @@ import {
 import {
     deleteManagedUserController,
     deleteManagedUsersController,
+    getManagedUserController,
     listManagedUsersController,
+    updateManagedUserController,
 } from "../controllers/adminUserController.js";
 import { authorizeAnalytics } from "../middleware/analyticsAuthMiddleware.js";
 import { validate } from "../middleware/validate.js";
@@ -14,6 +16,10 @@ import {
     analyticsSummaryValidation,
     analyticsTopUsersValidation,
 } from "../validations/analyticsValidation.js";
+import {
+    managedUserIdValidation,
+    updateManagedUserValidation,
+} from "../validations/adminUserValidation.js";
 
 const router = express.Router();
 
@@ -40,6 +46,20 @@ router.delete(
     "/analytics/users/",
     authorizeAnalytics,
     deleteManagedUsersController
+);
+router.get(
+    "/analytics/users/:userId/",
+    authorizeAnalytics,
+    managedUserIdValidation,
+    validate,
+    getManagedUserController
+);
+router.patch(
+    "/analytics/users/:userId/",
+    authorizeAnalytics,
+    updateManagedUserValidation,
+    validate,
+    updateManagedUserController
 );
 router.delete(
     "/analytics/users/:userId/",
