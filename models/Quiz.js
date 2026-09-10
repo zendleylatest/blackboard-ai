@@ -58,8 +58,6 @@ export const findUserQuizzesBySubject = async (
             times_attempted,
             last_score,
             last_attempted_at,
-            streak_count,
-            last_streak_date,
             created_at,
             updated_at,
             subject_id,
@@ -91,8 +89,6 @@ export const findQuizByIdForUser = async (
             q.times_attempted,
             q.last_score,
             q.last_attempted_at,
-            q.streak_count,
-            q.last_streak_date,
             q.created_at,
             q.updated_at,
             q.subject_id,
@@ -234,9 +230,7 @@ export const findAttemptByIdForUser = async (
             q.title AS quiz_title,
             q.duration_sec AS quiz_duration_sec,
             q.question_count AS quiz_question_count,
-            q.sources AS quiz_sources,
-            q.streak_count,
-            q.last_streak_date
+            q.sources AS quiz_sources
 
         FROM api_quizattempt a
         INNER JOIN api_quiz q
@@ -405,8 +399,6 @@ export const updateQuizAggregates = async (
         submittedAt,
         score,
         total,
-        streakCount,
-        streakDate,
     },
     connection
 ) => {
@@ -416,16 +408,12 @@ export const updateQuizAggregates = async (
         SET
             times_attempted = times_attempted + 1,
             last_score = ?,
-            last_attempted_at = ?,
-            streak_count = ?,
-            last_streak_date = ?
+            last_attempted_at = ?
         WHERE id = ?
         `,
         [
             total > 0 ? score / total : 0,
             submittedAt,
-            streakCount,
-            streakDate,
             normalizeUuid(quizId),
         ],
         connection

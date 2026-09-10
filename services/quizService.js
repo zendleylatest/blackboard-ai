@@ -51,16 +51,6 @@ const formatUuid = (value) => {
         : value;
 };
 
-const dateKey = (value) => {
-    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-        return value.slice(0, 10);
-    }
-    const date = new Date(value);
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${date.getFullYear()}-${month}-${day}`;
-};
-
 const toIsoOrNull = (value) => {
     if (!value) {
         return null;
@@ -234,10 +224,6 @@ export const getQuizDetail = async (
         difficulty: quiz.difficulty,
         times_attempted: quiz.times_attempted,
         last_score: quiz.last_score,
-        streak_count: Number(quiz.streak_count || 0),
-        last_streak_date: quiz.last_streak_date
-            ? dateKey(quiz.last_streak_date)
-            : null,
         last_attempted_at:
             quiz.last_attempted_at
                 ? new Date(
@@ -433,18 +419,6 @@ export const submitQuizAttempt = async (
         }
 
         const total = Number(attempt.total);
-        const today = dateKey(now);
-        const previous = attempt.last_streak_date
-            ? dateKey(attempt.last_streak_date)
-            : null;
-        const yesterdayDate = new Date(now);
-        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-        const yesterday = dateKey(yesterdayDate);
-        const streakCount = previous === today
-            ? Number(attempt.streak_count || 0)
-            : previous === yesterday
-                ? Number(attempt.streak_count || 0) + 1
-                : 1;
 
         await submitAttempt(
             {
@@ -462,8 +436,6 @@ export const submitQuizAttempt = async (
                 submittedAt: now,
                 score,
                 total,
-                streakCount,
-                streakDate: now,
             },
             connection
         );
@@ -488,7 +460,6 @@ export const submitQuizAttempt = async (
                     : 0,
             submitted_at:
                 now.toISOString(),
-            streak_count: streakCount,
             per_question:
                 finalAnswers.map((answer) => ({
                     id: answer.question_id,
