@@ -1,4 +1,6 @@
 import HttpError from "../../utils/httpError.js";
+import { getConnection } from "../../config/database.js";
+import { deleteDependentRows } from "../../utils/cascadeDelete.js";
 
 import {
     findUserByIdSafe,
@@ -23,17 +25,49 @@ export const deleteAccountService = async (
 
     }
 
-    const deleted =
-        await deleteUserById(
+    const connection = await getConnection();
+
+    try {
+
+        await connection.beginTransaction();
+
+        // Explicitly clear every dependent row first (recursively) — some
+        // FK constraints on the live database aren't set up to cascade,
+        // so this can't rely on the DB doing it automatically.
+        await deleteDependentRows(
+            connection,
+            process.env.DB_NAME,
+            "api_user",
+            "id",
             user.id
         );
 
-    if (!deleted) {
+        const deleted =
+            await deleteUserById(
+                user.id,
+                connection
+            );
 
-        throw new HttpError(
-            "Failed to delete account.",
-            500
-        );
+        if (!deleted) {
+
+            throw new HttpError(
+                "Failed to delete account.",
+                500
+            );
+
+        }
+
+        await connection.commit();
+
+    } catch (error) {
+
+        await connection.rollback();
+
+        throw error;
+
+    } finally {
+
+        connection.release();
 
     }
 
