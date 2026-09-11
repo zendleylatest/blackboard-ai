@@ -46,4 +46,7 @@ export const completeStudyValidation = [
     setParam(),
     body("session_id").isInt({ min: 1 }),
     body("duration_sec").optional().isInt({ min: 0 }),
+    body("reviews").optional().isArray({ max: 100 }),
+    body("reviews.*.card_id").optional().isInt({ min: 1 }),
+    body("reviews.*.result").optional().isIn(["easy", "hard"]),
 ];

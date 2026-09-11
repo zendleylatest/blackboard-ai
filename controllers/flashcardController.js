@@ -81,6 +81,7 @@ export const completeStudyController = async (req, res, next) => {
         const data = await completeStudy(req.user.id, req.params.setId, {
             sessionId: req.body.session_id,
             durationSec: req.body.duration_sec,
+            reviews: req.body.reviews || [],
         });
         return successResponse(res, 200, "Study session completed successfully.", data);
     } catch (error) {

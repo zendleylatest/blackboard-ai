@@ -157,9 +157,22 @@ export const appleAuthService = async ({
     }
 
     // Prefer the verified token email.
+    // Apple normally supplies email only on the first authorization. If the
+    // backend account is later deleted, the same Apple identity must still be
+    // able to create a new account without requiring the user to revoke Apple
+    // access in iOS Settings first. Use a stable, non-PII internal address
+    // when Apple no longer returns the original address.
+    const fallbackEmail =
+        `apple_${crypto
+            .createHash("sha256")
+            .update(appleUserId)
+            .digest("hex")
+            .slice(0, 24)}@users.blackboardai.app`;
+
     const userEmail =
         claims.email ||
-        email;
+        email ||
+        fallbackEmail;
 
     const fullName =
         full_name?.trim() || "";
@@ -206,21 +219,6 @@ export const appleAuthService = async ({
                 Boolean(user.profile_completed),
 
         };
-
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Email Required For New Account
-    |--------------------------------------------------------------------------
-    */
-
-    if (!userEmail) {
-
-        throw new HttpError(
-            "Email is required to create an account on first sign-in.",
-            400
-        );
 
     }
 

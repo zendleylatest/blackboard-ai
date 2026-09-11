@@ -369,7 +369,7 @@ const dateKey = (value) => {
 export const completeStudy = async (
     userId,
     setId,
-    { sessionId, durationSec = 0 }
+    { sessionId, durationSec = 0, reviews = [] }
 ) => {
     const connection = await pool.getConnection();
     try {
@@ -392,6 +392,44 @@ export const completeStudy = async (
                 streak_count: Number(set.streak_count || 0),
             };
         }
+
+        // Save reviews that were still in flight when the user answered the
+        // last card. This keeps completion atomic and removes the extra
+        // client/server round trip that previously blocked the result screen.
+        let insertedReviewCount = 0;
+        for (const review of reviews) {
+            const normalizedResult = String(review.result || "").toLowerCase();
+            if (!["easy", "hard"].includes(normalizedResult)) {
+                throw new HttpError(400, "Result must be easy or hard.");
+            }
+            const card = await findFlashcardInSet(review.card_id, set.id, connection);
+            if (!card) throw new HttpError(400, "Card does not belong to this set.");
+            const existingEvent = await findReviewEventForCard(
+                session.id,
+                card.id,
+                connection
+            );
+            if (existingEvent) continue;
+
+            const reviewedAt = new Date();
+            await updateReviewedCard(card.id, normalizedResult, reviewedAt, connection);
+            await createReviewEvent({
+                sessionId: session.id,
+                cardId: card.id,
+                result: normalizedResult,
+                reviewedAt,
+            }, connection);
+            insertedReviewCount += 1;
+        }
+        if (insertedReviewCount > 0) {
+            const reviewMastery = await getSetMastery(set.id, connection);
+            await updateSetAfterReview({
+                setId: set.id,
+                mastery: reviewMastery,
+                reviewCount: insertedReviewCount,
+            }, connection);
+        }
+
         const events = await findReviewEventsBySession(sessionId, connection);
         const easyCount = events.filter((event) => event.result === "easy").length;
         const hardCount = events.filter((event) => event.result === "hard").length;

@@ -406,18 +406,18 @@ export const findAverageLeitnerBox = async (
 };
 
 export const updateSetAfterReview = async (
-    { setId, mastery },
+    { setId, mastery, reviewCount = 1 },
     connection
 ) => {
     await executeQuery(
         `
         UPDATE api_flashcardset
-        SET reviews_total = reviews_total + 1,
-            reviews_today = reviews_today + 1,
+        SET reviews_total = reviews_total + ?,
+            reviews_today = reviews_today + ?,
             mastery = ?
         WHERE id = ?
         `,
-        [mastery, setId],
+        [reviewCount, reviewCount, mastery, setId],
         connection
     );
 };
