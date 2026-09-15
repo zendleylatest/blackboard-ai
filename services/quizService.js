@@ -28,6 +28,16 @@ import {
     incrementUsage,
 } from "./usageLimitService.js";
 
+const dateKey = (value) => {
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+        return value.slice(0, 10);
+    }
+    const date = new Date(value);
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
+};
+
 const parseJson = (value, fallback = null) => {
     if (value === null || value === undefined) {
         return fallback;
@@ -230,6 +240,10 @@ export const getQuizDetail = async (
                       quiz.last_attempted_at
                   ).toISOString()
                 : null,
+        streak_count: Number(quiz.streak_count || 0),
+        last_streak_date: quiz.last_streak_date
+            ? new Date(quiz.last_streak_date).toISOString()
+            : null,
         created_at: new Date(
             quiz.created_at
         ).toISOString(),
@@ -430,12 +444,27 @@ export const submitQuizAttempt = async (
             connection
         );
 
+        const today = dateKey(now);
+        const previous = attempt.quiz_last_streak_date
+            ? dateKey(attempt.quiz_last_streak_date)
+            : null;
+        const yesterdayDate = new Date(now);
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterday = dateKey(yesterdayDate);
+        const streakCount = previous === today
+            ? Number(attempt.quiz_streak_count || 0)
+            : previous === yesterday
+                ? Number(attempt.quiz_streak_count || 0) + 1
+                : 1;
+
         await updateQuizAggregates(
             {
                 quizId: attempt.quiz_id,
                 submittedAt: now,
                 score,
                 total,
+                streakCount,
+                streakDate: now,
             },
             connection
         );
