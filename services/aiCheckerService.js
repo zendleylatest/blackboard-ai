@@ -20,6 +20,36 @@ import {
 } from "./usageLimitService.js";
 import { evaluateAnswerWithAi } from "./aiChecker/aiCheckerAiService.js";
 
+// Builds a "Sources" entry (in the same shape RAG chat sources use, so the
+// existing SourcesSheet/SourcesButton widgets render it unchanged) for the
+// question paper + mark scheme a past-paper evaluation was actually marked
+// against, letting the user open the real PDF from the AI Checker's chat
+// bubble instead of only having it as an invisible input to the AI call.
+const buildCheckerSource = (document, { qref = "" } = {}) => {
+    if (!document) return null;
+    return {
+        chunk_id: 0,
+        doc_id: document.id,
+        page: null,
+        qref,
+        subject_code: document.subject_code || "",
+        year: document.year || "",
+        series: document.series || "",
+        document_type: String(document.document_type || "").toLowerCase(),
+        paper: document.paper || "",
+        variant: document.variant || "",
+        doc: {
+            id: document.id,
+            subject_code: document.subject_code || "",
+            year: document.year || "",
+            series: document.series || "",
+            paper: document.paper || "",
+            variant: document.variant || "",
+            document_type: String(document.document_type || "").toLowerCase(),
+        },
+    };
+};
+
 const formatEvaluationResponse = (evaluation) => {
     const parts = [
         `**Marks: ${evaluation.marks_awarded}/${evaluation.max_marks} (${Number(evaluation.percentage || 0).toFixed(1)}%)**\n`,
@@ -226,11 +256,22 @@ export const evaluateWithAiChecker = async (
         modelUsed: result.model_used,
         evaluationTimeSeconds: result.evaluation_time_seconds,
     });
+    const qref = mode === "past_paper"
+        ? `Q${questionNumber}${questionPart ? `(${questionPart})` : ""}${questionSubpart ? `(${questionSubpart})` : ""}`
+        : "";
+    const checkerSources = mode === "past_paper"
+        ? [
+            buildCheckerSource(context.questionPaper, { qref }),
+            buildCheckerSource(context.markScheme, { qref }),
+        ].filter(Boolean)
+        : [];
+
     const assistantMessage = await createChatMessage({
         threadId,
         role: "assistant",
         mode: "checker",
         text: formatEvaluationResponse(result),
+        sources: checkerSources,
         metadata: {
             evaluation_id: evaluation.id,
             marks_awarded: result.marks_awarded,
