@@ -161,6 +161,7 @@ export const createGoogleUser = async ({
     email,
     googleId,
     password,
+    googlePictureUrl,
 }) => {
 
     const sql = `
@@ -181,13 +182,14 @@ export const createGoogleUser = async ({
             created_at,
             auth_provider,
             google_id,
-            profile_completed
+            profile_completed,
+            google_picture_url
         )
         VALUES
         (
             ?, 0, ?, '', '', 0, 1, NOW(),
             ?, 1, 0, 'student', NOW(),
-            'google', ?, 0
+            'google', ?, 0, ?
         )
     `;
 
@@ -198,10 +200,31 @@ export const createGoogleUser = async ({
             username,
             email,
             googleId,
+            googlePictureUrl ?? null,
         ]
     );
 
     return result.insertId;
+
+};
+
+export const updateGooglePictureUrl = async (
+    userId,
+    googlePictureUrl,
+    connection = null
+) => {
+
+    const sql = `
+        UPDATE api_user
+        SET google_picture_url = ?
+        WHERE id = ?
+    `;
+
+    await executeQuery(
+        sql,
+        [googlePictureUrl ?? null, userId],
+        connection
+    );
 
 };
 

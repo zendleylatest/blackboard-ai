@@ -3,8 +3,10 @@ import {
     countManagedUsers,
     findManagedUserById,
     findManagedUsers,
+    setUserActiveStatus,
 } from "../models/AdminUser.js";
 import { findUserByIdSafe } from "../models/auth/User.js";
+import { findAiUsageTotalsByUserIds, findAiUsageTotalForUser } from "../models/AiUsageLog.js";
 import HttpError from "../utils/httpError.js";
 import { deleteDependentRows } from "../utils/cascadeDelete.js";
 
@@ -20,15 +22,27 @@ const deletePendingRegistrationForUser = async (connection, user) => {
     );
 };
 
-export const getManagedUsers = async ({ search, page = 1, pageSize = 20 }) => {
+export const getManagedUsers = async ({
+    search,
+    plan,
+    startDate,
+    endDate,
+    page = 1,
+    pageSize = 20,
+}) => {
     const safePage = Math.max(1, Number(page) || 1);
     const safePageSize = Math.min(100, Math.max(1, Number(pageSize) || 20));
     const offset = (safePage - 1) * safePageSize;
+    const filters = { search, plan, startDate, endDate };
     const [users, totalCount] = await Promise.all([
-        findManagedUsers({ search, limit: safePageSize, offset }),
-        countManagedUsers(search),
+        findManagedUsers({ ...filters, limit: safePageSize, offset }),
+        countManagedUsers(filters),
     ]);
     const totalPages = Math.max(1, Math.ceil(totalCount / safePageSize));
+
+    const usageTotals = await findAiUsageTotalsByUserIds(
+        users.map((user) => Number(user.id))
+    );
 
     return {
         users: users.map((user) => ({
@@ -37,6 +51,10 @@ export const getManagedUsers = async ({ search, page = 1, pageSize = 20 }) => {
             is_verified: Boolean(user.is_verified),
             is_active: Boolean(user.is_active),
             profile_completed: Boolean(user.profile_completed),
+            ai_usage: usageTotals[Number(user.id)] || {
+                total_tokens: 0,
+                estimated_cost_usd: 0,
+            },
         })),
         pagination: {
             page: safePage,
@@ -96,7 +114,34 @@ export const getManagedUser = async (targetUserId) => {
     }
     const user = await findManagedUserById(userId);
     if (!user) throw new HttpError(404, "User not found.");
-    return serializeManagedUser(user);
+    const aiUsage = await findAiUsageTotalForUser(userId);
+    return {
+        ...serializeManagedUser(user),
+        ai_usage: aiUsage,
+    };
+};
+
+export const setManagedUserBanStatus = async ({ targetUserId, isActive, adminUserId }) => {
+    const userId = Number(targetUserId);
+    if (!Number.isInteger(userId) || userId < 1) {
+        throw new HttpError(400, "Invalid user ID.");
+    }
+    const existing = await findManagedUserById(userId);
+    if (!existing) throw new HttpError(404, "User not found.");
+
+    if (adminUserId && userId === Number(adminUserId)) {
+        throw new HttpError(400, "You cannot ban or unban your own admin account.");
+    }
+    if (ADMIN_ROLES.has(String(existing.role || "").toLowerCase())) {
+        throw new HttpError(403, "Admin accounts cannot be banned.");
+    }
+
+    await setUserActiveStatus(userId, isActive);
+
+    console.info(
+        `Admin ${isActive ? "unbanned" : "banned"} user: user_id=${userId}, admin_id=${adminUserId || "token"}`
+    );
+    return getManagedUser(userId);
 };
 
 export const updateManagedUser = async ({ targetUserId, updates, adminUserId }) => {

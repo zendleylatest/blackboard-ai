@@ -48,11 +48,12 @@ export const createUserProfile = async (
             age,
             class_level,
             exam_board,
-            profile_pic_url
+            profile_pic_url,
+            phone
         )
         VALUES
         (
-            ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?
         )
     `;
 
@@ -65,6 +66,7 @@ export const createUserProfile = async (
             profile.classLevel,
             profile.examBoard,
             profile.profilePicUrl ?? null,
+            profile.phone ?? null,
         ],
         connection
     );
@@ -90,7 +92,8 @@ export const updateUserProfile = async (
             full_name = ?,
             age = ?,
             class_level = ?,
-            exam_board = ?
+            exam_board = ?,
+            phone = ?
         WHERE user_id = ?
     `;
 
@@ -101,6 +104,7 @@ export const updateUserProfile = async (
             profile.age ?? null,
             profile.classLevel,
             profile.examBoard,
+            profile.phone ?? null,
             profile.userId,
         ],
         connection

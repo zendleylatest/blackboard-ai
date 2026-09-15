@@ -133,6 +133,7 @@ export const sendChatMessage = async (
             overrideGating: Boolean(overrideGating),
             attachments,
             paperContext: await getPaperContext(paperDocumentId),
+            userId,
         });
     } catch (error) {
         assistantError = error.message || "assistant_generation_failed";
@@ -311,6 +312,7 @@ export const submitMcqWrongReview = async (
                     gcs_key: markScheme.gcs_key,
                 }] : []),
             ],
+            userId,
         });
     } catch (error) {
         assistantError = error.message || "assistant_generation_failed";

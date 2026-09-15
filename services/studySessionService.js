@@ -95,6 +95,7 @@ export const createUserStudySession = async (
         const extraction = await extractQuestionsFromDocuments({
             questionPaper,
             markScheme,
+            userId,
         });
         const questions = extraction.questions || [];
         const questionsData = {
@@ -220,6 +221,7 @@ export const submitSessionQuestionAnswer = async (
                 mime: attachment.mime,
             })),
         ],
+        userId,
     });
     await createQuestionEvaluation({
         answerId,
@@ -302,6 +304,7 @@ export const sendSessionQuestionFollowup = async (
         chatHistory: history,
         userMessage: cleanMessage,
         markSchemeText: mappings.map((mapping) => mapping.mark_scheme_text).join("\n"),
+        userId,
     });
     const assistantChat = await createQuestionChatMessage({
         questionId,

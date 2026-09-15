@@ -136,6 +136,7 @@ const serializeListSet = (set) => ({
         ? null
         : Number(set.last_score),
     streak_count: Number(set.streak_count || 0),
+    last_streak_date: set.last_streak_date ? dateKey(set.last_streak_date) : null,
     created_at: iso(set.created_at),
     updated_at: iso(set.updated_at),
 });
@@ -519,6 +520,7 @@ export const generateAiFlashcardSet = async (
         prompt: String(prompt || "").trim(),
         count: safeCount,
         difficulty: safeDifficulty,
+        userId,
     });
     const allowedSourceIds = new Set(
         generated.sources.map((source) => Number(source.chunk_id))

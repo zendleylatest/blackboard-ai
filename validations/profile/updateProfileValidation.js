@@ -54,4 +54,14 @@ export const updateProfileValidation = [
         .notEmpty()
         .withMessage("Exam board cannot be empty."),
 
+    body("phone")
+        .optional({ nullable: true, checkFalsy: true })
+        .isString()
+        .withMessage("Phone number must be a string.")
+        .trim()
+        .matches(/^(\+92|0)3\d{9}$/)
+        .withMessage(
+            "Phone number must be a valid Pakistani number (e.g. 03XXXXXXXXX or +923XXXXXXXXX)."
+        ),
+
 ];

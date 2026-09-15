@@ -3,6 +3,7 @@ import {
     deleteManagedUsers,
     getManagedUser,
     getManagedUsers,
+    setManagedUserBanStatus,
     updateManagedUser,
 } from "../services/adminUserService.js";
 
@@ -10,6 +11,9 @@ export const listManagedUsersController = async (req, res, next) => {
     try {
         const data = await getManagedUsers({
             search: req.query.search,
+            plan: req.query.plan,
+            startDate: req.query.start_date,
+            endDate: req.query.end_date,
             page: req.query.page,
             pageSize: req.query.page_size,
         });
@@ -38,6 +42,40 @@ export const updateManagedUserController = async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: "User updated successfully.",
+            user,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const banManagedUserController = async (req, res, next) => {
+    try {
+        const user = await setManagedUserBanStatus({
+            targetUserId: req.params.userId,
+            isActive: false,
+            adminUserId: req.user?.id,
+        });
+        return res.status(200).json({
+            success: true,
+            message: "User has been banned.",
+            user,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const unbanManagedUserController = async (req, res, next) => {
+    try {
+        const user = await setManagedUserBanStatus({
+            targetUserId: req.params.userId,
+            isActive: true,
+            adminUserId: req.user?.id,
+        });
+        return res.status(200).json({
+            success: true,
+            message: "User has been unbanned.",
             user,
         });
     } catch (error) {

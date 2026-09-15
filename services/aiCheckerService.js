@@ -164,6 +164,7 @@ export const evaluateWithAiChecker = async (
         subjectCode: thread.subject_code || "",
         markSchemeText: context?.markSchemeText || "",
         maxMarks: context?.maxMarks,
+        userId,
         sourceDocuments: [
             ...(context
                 ? [context.questionPaper, context.markScheme]

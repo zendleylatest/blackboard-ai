@@ -643,6 +643,7 @@ export const generateAiQuiz = async (
         count,
         title,
         difficulty,
+        userId,
     });
     const quizId = crypto.randomUUID().replace(/-/g, "");
     const createdAt = new Date();

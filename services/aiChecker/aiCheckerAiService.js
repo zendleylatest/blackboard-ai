@@ -3,6 +3,7 @@ import HttpError from "../../utils/httpError.js";
 import { getOpenAIClient, getOpenAIModel } from "../../utils/ai/openaiClient.js";
 import { extractToolJson } from "../../utils/ai/llmHelpers.js";
 import { readResourceFile } from "../../utils/localStorage.js";
+import { logAiUsage } from "../../utils/ai/aiUsageTracker.js";
 
 const CHECKER_TOOL_SCHEMA = {
     name: "return_marking_json",
@@ -131,6 +132,7 @@ export const evaluateAnswerWithAi = async ({
     markSchemeText = "",
     maxMarks = null,
     sourceDocuments = [],
+    userId = null,
 }) => {
     if (!process.env.OPENAI_API_KEY) {
         throw new HttpError(503, "AI Checker is not configured.");
@@ -261,5 +263,11 @@ export const evaluateAnswerWithAi = async ({
         response?.usage?.totalTokens ||
         0
     );
+    logAiUsage({
+        userId,
+        feature: "ai_checker",
+        model: getOpenAIModel(),
+        response,
+    });
     return result;
 };

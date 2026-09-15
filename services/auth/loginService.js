@@ -40,6 +40,15 @@ if (!user.is_verified) {
 
 }
 
+if (!user.is_active) {
+
+    throw new HttpError(
+        "This account has been suspended. Contact support if you believe this is a mistake.",
+        403
+    );
+
+}
+
 const passwordMatched = await bcrypt.compare(
     password,
     user.password

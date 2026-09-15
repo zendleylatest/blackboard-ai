@@ -4,10 +4,12 @@ import {
     analyticsTopUsersController,
 } from "../controllers/analyticsController.js";
 import {
+    banManagedUserController,
     deleteManagedUserController,
     deleteManagedUsersController,
     getManagedUserController,
     listManagedUsersController,
+    unbanManagedUserController,
     updateManagedUserController,
 } from "../controllers/adminUserController.js";
 import { authorizeAnalytics } from "../middleware/analyticsAuthMiddleware.js";
@@ -60,6 +62,20 @@ router.patch(
     updateManagedUserValidation,
     validate,
     updateManagedUserController
+);
+router.post(
+    "/analytics/users/:userId/ban/",
+    authorizeAnalytics,
+    managedUserIdValidation,
+    validate,
+    banManagedUserController
+);
+router.post(
+    "/analytics/users/:userId/unban/",
+    authorizeAnalytics,
+    managedUserIdValidation,
+    validate,
+    unbanManagedUserController
 );
 router.delete(
     "/analytics/users/:userId/",

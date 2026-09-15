@@ -5,6 +5,7 @@ import {
     getOpenAIGatingModel,
     getOpenAIModel,
 } from "../../utils/ai/openaiClient.js";
+import { logAiUsage } from "../../utils/ai/aiUsageTracker.js";
 import {
     coerceChatAnswer,
     coerceChunkIds,
@@ -124,6 +125,7 @@ const decideRag = async ({
     subjectCode,
     subjectName,
     userText,
+    userId = null,
 }) => {
     const fallback = {
         is_conversational: /^(hi|hello|hey|thanks|thank you)\b/i.test(userText),
@@ -159,6 +161,12 @@ const decideRag = async ({
                 function: { name: GATING_TOOL_SCHEMA.name },
             },
             max_tokens: Number(process.env.GATING_MAX_OUTPUT_TOKENS || 180),
+        });
+        logAiUsage({
+            userId,
+            feature: "chat_gating",
+            model: getOpenAIGatingModel(),
+            response,
         });
         return normalizeGate({
             ...fallback,
@@ -286,6 +294,7 @@ const extractAnswer = (response) => {
                 toolPayload.chunk_ids ?? toolPayload.sources
             ),
             toolSources: coerceSources(toolPayload.sources),
+            usage: response?.usage,
         };
     }
     return {
@@ -295,6 +304,7 @@ const extractAnswer = (response) => {
         ),
         requestedSources: [],
         toolSources: [],
+        usage: response?.usage,
     };
 };
 
@@ -352,6 +362,7 @@ export const generateChatAssistantResponse = async ({
     attachments = [],
     paperContext = "",
     sourceDocuments = [],
+    userId = null,
 }) => {
     if (!process.env.OPENAI_API_KEY) {
         throw new HttpError(503, "Chat assistant is not configured.");
@@ -362,6 +373,7 @@ export const generateChatAssistantResponse = async ({
         subjectCode,
         subjectName,
         userText,
+        userId,
     });
     const relevanceThreshold = Number(process.env.GATING_RELEVANCE_THRESHOLD || 30);
     const shouldSwitch = Boolean(
@@ -546,6 +558,12 @@ export const generateChatAssistantResponse = async ({
             }
         }
     }
+    logAiUsage({
+        userId,
+        feature: "chat",
+        model: getOpenAIModel(),
+        response: { usage: result.usage },
+    });
     const answer = result.answer || "I couldn't generate a response right now. Please try again in a moment.";
     const sourceById = new Map(
         sourceMetadata.map((source) => [Number(source.chunk_id), source])

@@ -11,6 +11,7 @@ import {
     sanitizeTitle,
 } from "../../utils/ai/llmHelpers.js";
 import { retrieveContext } from "../ragService.js";
+import { logAiUsage } from "../../utils/ai/aiUsageTracker.js";
 
 const TOOL_NAME = "propose_quiz";
 const VALID_DIFFICULTIES = new Set(["easy", "medium", "hard"]);
@@ -93,6 +94,7 @@ const callModel = async ({
     system,
     user,
     temperature,
+    userId = null,
 }) => {
     const schema = createSchema(count);
     const response = await client.chat.completions.create({
@@ -116,6 +118,8 @@ const callModel = async ({
         },
         max_tokens: Math.max(1000, count * 300),
     });
+
+    logAiUsage({ userId, feature: "quiz_generation", model, response });
 
     const payload = extractToolJson(response, TOOL_NAME) || {};
     return {
@@ -215,6 +219,7 @@ export const generateQuizWithAi = async ({
     count,
     title,
     difficulty,
+    userId = null,
 }) => {
     if (!process.env.OPENAI_API_KEY) {
         throw new HttpError(503, "AI quiz generation is not configured.");
@@ -265,6 +270,7 @@ export const generateQuizWithAi = async ({
             system,
             user,
             temperature: Number(process.env.OPENAI_TEMP || 0.35),
+            userId,
         });
     } catch (error) {
         throw new HttpError(502, `AI quiz generation failed: ${error.message}`);
@@ -283,6 +289,7 @@ export const generateQuizWithAi = async ({
                 system: `Generate exactly ${missing} additional unique, self-contained multiple-choice questions through the supplied tool.`,
                 user: `Subject: ${subjectName}\nDifficulty: ${safeDifficulty}\nPrompt: ${prompt}`,
                 temperature: Number(process.env.OPENAI_TEMP || 0.35) + 0.15,
+                userId,
             });
         } catch {
             break;

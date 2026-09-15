@@ -26,6 +26,28 @@ const getReferences = async (connection, schema, table, column) => {
     return rows;
 };
 
+// Cheap existence check: does anything at all reference this table? Leaf
+// tables (nothing points to them) can be bulk-deleted by the parent FK
+// column directly with no need to resolve a primary key or walk their rows
+// one by one — this matters both for correctness (some tables, e.g. M2M
+// "through" tables, don't have a single-column primary key, which used to
+// make the whole cascade throw) and for performance (a user with a lot of
+// chat/flashcard/quiz history could otherwise trigger a per-row recursive
+// walk deep enough to time out the request).
+const hasAnyReferences = async (connection, schema, table) => {
+    const [rows] = await connection.execute(
+        `
+        SELECT 1
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE REFERENCED_TABLE_SCHEMA = ?
+          AND REFERENCED_TABLE_NAME = ?
+        LIMIT 1
+        `,
+        [schema, table]
+    );
+    return rows.length > 0;
+};
+
 const getPrimaryKey = async (connection, schema, table) => {
     const [rows] = await connection.execute(
         `
@@ -67,23 +89,26 @@ export const deleteDependentRows = async (
     for (const reference of references) {
         const childTable = reference.child_table;
         const childColumn = reference.child_column;
-        const primaryKey = await getPrimaryKey(connection, schema, childTable);
-        const [children] = await connection.execute(
-            `SELECT ${quoteIdentifier(primaryKey)} AS id
-             FROM ${quoteIdentifier(childTable)}
-             WHERE ${quoteIdentifier(childColumn)} = ?`,
-            [parentValue]
-        );
 
-        for (const child of children) {
-            await deleteDependentRows(
-                connection,
-                schema,
-                childTable,
-                primaryKey,
-                child.id,
-                nextAncestry
+        if (await hasAnyReferences(connection, schema, childTable)) {
+            const primaryKey = await getPrimaryKey(connection, schema, childTable);
+            const [children] = await connection.execute(
+                `SELECT ${quoteIdentifier(primaryKey)} AS id
+                 FROM ${quoteIdentifier(childTable)}
+                 WHERE ${quoteIdentifier(childColumn)} = ?`,
+                [parentValue]
             );
+
+            for (const child of children) {
+                await deleteDependentRows(
+                    connection,
+                    schema,
+                    childTable,
+                    primaryKey,
+                    child.id,
+                    nextAncestry
+                );
+            }
         }
 
         await connection.execute(

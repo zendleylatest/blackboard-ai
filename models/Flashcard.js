@@ -65,7 +65,7 @@ export const findFlashcardSetsBySubject = async (
         id, title, topic, difficulty_level, is_ai_generated,
         card_count, reviews_today, reviews_total, completed_today,
         completed_total, last_completed_at, last_studied, mastery,
-        streak_count, created_at, updated_at,
+        streak_count, last_streak_date, created_at, updated_at,
         (
             SELECT CASE
                 WHEN ss.total_cards > 0

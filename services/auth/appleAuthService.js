@@ -190,6 +190,13 @@ export const appleAuthService = async ({
 
     if (existingAppleUser) {
 
+        if (!existingAppleUser.is_active) {
+            throw new HttpError(
+                "This account has been suspended. Contact support if you believe this is a mistake.",
+                403
+            );
+        }
+
         await updateLastLogin(
             existingAppleUser.id
         );
@@ -267,6 +274,13 @@ export const appleAuthService = async ({
         existingEmailUser &&
         existingEmailUser.auth_provider === "apple"
     ) {
+
+        if (!existingEmailUser.is_active) {
+            throw new HttpError(
+                "This account has been suspended. Contact support if you believe this is a mistake.",
+                403
+            );
+        }
 
         if (existingEmailUser.apple_user_id !== appleUserId) {
             await updateAppleId(

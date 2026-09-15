@@ -62,6 +62,11 @@ export const updateUserProfileService = async (
                     ? data.exam_board
                     : profile.exam_board,
 
+        phone =
+            data.phone !== undefined
+                ? data.phone
+                : profile.phone,
+
     } = data;
 
     const classLevel =
@@ -82,6 +87,8 @@ export const updateUserProfileService = async (
         classLevel,
 
         examBoard,
+
+        phone,
 
     });
 

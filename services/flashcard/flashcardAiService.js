@@ -13,6 +13,7 @@ import {
     sanitizeTitle,
 } from "../../utils/ai/llmHelpers.js";
 import { retrieveContext } from "../ragService.js";
+import { logAiUsage } from "../../utils/ai/aiUsageTracker.js";
 
 const GENERATION_SLA_MS = Number(process.env.GENERATION_SLA_MS || 60000);
 const RAG_DEADLINE_MS = Number(process.env.RAG_DEADLINE_MS || 10000);
@@ -147,6 +148,7 @@ const callModel = async ({
     temperature = OPENAI_TEMP,
     allowRepair = true,
     startMs,
+    userId = null,
 }) => {
     if (remainingTimeMs(startMs) < 1000) return { title: "", items: [], sources: [] };
     const tool = buildTool(count);
@@ -166,6 +168,8 @@ const callModel = async ({
     } catch (error) {
         return { title: "", items: [], sources: [], error };
     }
+
+    logAiUsage({ userId, feature: "flashcard_generation", model, response });
 
     let parsed = extractToolJson(response, TOOL_NAME);
     let validated = validateFlashcards(parsed);
@@ -300,6 +304,7 @@ export const generateFlashcardsWithAi = async ({
     count = 10,
     difficulty = "medium",
     subjectCode = "",
+    userId = null,
 }) => {
     if (!process.env.OPENAI_API_KEY) {
         throw new HttpError(503, "AI flashcard generation is not configured.");
@@ -384,6 +389,7 @@ export const generateFlashcardsWithAi = async ({
             contextItems,
         }),
         startMs,
+        userId,
     });
 
     let title = primary.title;
@@ -408,6 +414,7 @@ export const generateFlashcardsWithAi = async ({
                 `Return exactly ${safeCount} unique flashcards.`,
             ].join("\n"),
             startMs,
+            userId,
         });
         title = title || fallback.title;
         items = dedupeItems(fallback.items);
@@ -424,6 +431,7 @@ export const generateFlashcardsWithAi = async ({
             system: `Generate exactly ${missing} additional unique study flashcards through the provided tool. Keep them self-contained and concise; do not repeat existing concepts.`,
             user: `Subject: ${subjectName}\nTopic: ${topic || prompt || "(general study)"}\nDifficulty: ${safeDifficulty}`,
             startMs,
+            userId,
         });
         const unique = dedupeItems([...items, ...topup.items]);
         if (unique.length <= items.length) break;

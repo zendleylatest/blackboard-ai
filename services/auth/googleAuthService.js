@@ -13,6 +13,7 @@ import {
     findUserByIdSafe,
     createGoogleUser,
     updateGoogleId,
+    updateGooglePictureUrl,
     updateLastLogin,
 } from "../../models/auth/User.js";
 
@@ -132,6 +133,9 @@ export const googleAuthService = async ({
         payload.name ||
         email?.split("@")[0];
 
+    const googlePictureUrl =
+        payload.picture || null;
+
     if (!email) {
 
         throw new HttpError(
@@ -152,9 +156,23 @@ export const googleAuthService = async ({
 
     if (existingGoogleUser) {
 
+        if (!existingGoogleUser.is_active) {
+            throw new HttpError(
+                "This account has been suspended. Contact support if you believe this is a mistake.",
+                403
+            );
+        }
+
         await updateLastLogin(
             existingGoogleUser.id
         );
+
+        if (googlePictureUrl) {
+            await updateGooglePictureUrl(
+                existingGoogleUser.id,
+                googlePictureUrl
+            );
+        }
 
         const user =
             await findUserByIdSafe(
@@ -214,10 +232,27 @@ export const googleAuthService = async ({
 
     if (
         existingEmailUser &&
-        ["google", "apple"].includes(
-            existingEmailUser.auth_provider
-        )
+        existingEmailUser.auth_provider === "apple"
     ) {
+
+        throw new HttpError(
+            "An account with this email already exists via Apple Sign-In. Please use Apple to sign in.",
+            409
+        );
+
+    }
+
+    if (
+        existingEmailUser &&
+        existingEmailUser.auth_provider === "google"
+    ) {
+
+        if (!existingEmailUser.is_active) {
+            throw new HttpError(
+                "This account has been suspended. Contact support if you believe this is a mistake.",
+                403
+            );
+        }
 
         if (existingEmailUser.google_id !== googleId) {
             await updateGoogleId(
@@ -229,6 +264,13 @@ export const googleAuthService = async ({
         await updateLastLogin(
             existingEmailUser.id
         );
+
+        if (googlePictureUrl) {
+            await updateGooglePictureUrl(
+                existingEmailUser.id,
+                googlePictureUrl
+            );
+        }
 
         const user =
             await findUserByIdSafe(
@@ -251,9 +293,6 @@ export const googleAuthService = async ({
 
             profile_completed:
                 Boolean(user.profile_completed),
-
-            account_linked:
-                existingEmailUser.auth_provider === "apple",
 
         };
 
@@ -305,6 +344,8 @@ export const googleAuthService = async ({
             googleId,
 
             password: hashedPassword,
+
+            googlePictureUrl,
 
         });
 

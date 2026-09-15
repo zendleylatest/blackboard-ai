@@ -5,6 +5,11 @@ import { extractToolJson } from "../../utils/ai/llmHelpers.js";
 import { evaluateAnswerWithAi } from "../aiChecker/aiCheckerAiService.js";
 import { findQuestionMappingsByDocument } from "../../models/AiChecker.js";
 import { readResourceFile } from "../../utils/localStorage.js";
+import {
+    findExtractionCache,
+    saveExtractionCache,
+} from "../../models/DocumentExtractionCache.js";
+import { logAiUsage } from "../../utils/ai/aiUsageTracker.js";
 
 const EXTRACTION_SCHEMA = {
     name: "return_extracted_questions",
@@ -95,7 +100,31 @@ const questionRefKey = (question) => [
 export const extractQuestionsFromDocuments = async ({
     questionPaper,
     markScheme,
+    userId = null,
 }) => {
+    // Past papers are shared across every user who studies them, and
+    // extraction re-reads two full PDFs through an LLM call — the single
+    // biggest contributor to "starting a study session" feeling slow. Once
+    // any user has triggered extraction for this exact paper + mark scheme
+    // pair, reuse it instead of paying that cost again.
+    const cached = await findExtractionCache(questionPaper.id, markScheme.id);
+    if (cached) {
+        const cachedData = typeof cached.extraction_data === "string"
+            ? JSON.parse(cached.extraction_data)
+            : cached.extraction_data;
+        if (Array.isArray(cachedData?.questions) && cachedData.questions.length > 0) {
+            return {
+                success: true,
+                paper_title: cachedData.paper_title || questionPaper.title,
+                total_marks: Number(cachedData.total_marks || 0),
+                questions: cachedData.questions,
+                question_count: cachedData.questions.length,
+                processing_time_seconds: 0,
+                extraction_model: cached.extraction_model || "cached",
+            };
+        }
+    }
+
     const mappedQuestions = await fallbackQuestionsFromMappings(questionPaper.id);
     if (!process.env.OPENAI_API_KEY) {
         if (mappedQuestions.length > 0) {
@@ -118,8 +147,12 @@ export const extractQuestionsFromDocuments = async ({
     let questionPaperFile;
     let markSchemeFile;
     try {
-        questionPaperFile = await uploadOpenAiFile(client, questionPaper);
-        markSchemeFile = await uploadOpenAiFile(client, markScheme);
+        // These two uploads are independent — running them one after another
+        // was needlessly doubling the upload latency on the critical path.
+        [questionPaperFile, markSchemeFile] = await Promise.all([
+            uploadOpenAiFile(client, questionPaper),
+            uploadOpenAiFile(client, markScheme),
+        ]);
         const startedAt = Date.now();
         const response = await client.responses.create({
             model: getOpenAIModel(),
@@ -161,6 +194,12 @@ export const extractQuestionsFromDocuments = async ({
                     16000
             ),
         });
+        logAiUsage({
+            userId,
+            feature: "study_session_extraction",
+            model: getOpenAIModel(),
+            response,
+        });
         const payload = extractToolJson(response, EXTRACTION_SCHEMA.name);
         const questions = Array.isArray(payload?.questions)
             ? payload.questions.map((question, index) => ({
@@ -195,7 +234,7 @@ export const extractQuestionsFromDocuments = async ({
         if (questions.length === 0) {
             throw new HttpError(502, "No questions were extracted from the paper.");
         }
-        return {
+        const result = {
             success: true,
             paper_title: payload.paper_title || questionPaper.title,
             total_marks: Number(payload.total_marks || questions.reduce(
@@ -207,14 +246,37 @@ export const extractQuestionsFromDocuments = async ({
             processing_time_seconds: Math.round((Date.now() - startedAt) / 1000),
             extraction_model: getOpenAIModel(),
         };
+        // Best-effort: persist so the next study session on this exact paper
+        // skips extraction entirely. Never let a caching failure fail the
+        // request that already did the expensive work.
+        try {
+            await saveExtractionCache({
+                questionPaperId: questionPaper.id,
+                markSchemeId: markScheme.id,
+                extractionData: {
+                    paper_title: result.paper_title,
+                    total_marks: result.total_marks,
+                    questions: result.questions,
+                },
+                extractionModel: result.extraction_model,
+                processingTimeSeconds: result.processing_time_seconds,
+            });
+        } catch (cacheError) {
+            console.error(
+                "[STUDY_SESSION] Failed to cache extraction:",
+                cacheError?.message || cacheError
+            );
+        }
+        return result;
     } finally {
+        // Cleanup is best-effort and its outcome is irrelevant to the
+        // caller, so let it run in the background instead of holding up
+        // the response that's already been computed above.
         for (const fileId of [questionPaperFile, markSchemeFile]) {
             if (fileId) {
-                try {
-                    await client.files.delete(fileId);
-                } catch {
+                client.files.delete(fileId).catch(() => {
                     // Cleanup is best effort.
-                }
+                });
             }
         }
     }
@@ -230,6 +292,7 @@ export const evaluateStudyQuestion = async ({
     markSchemeText,
     subjectCode,
     sourceDocuments = [],
+    userId = null,
 }) => evaluateAnswerWithAi({
     question: `${questionNumber ? `Question ${questionNumber}` : ""}${questionPart ? `(${questionPart})` : ""}${questionSubpart ? `(${questionSubpart})` : ""}\n${questionText}`,
     studentAnswer,
@@ -237,6 +300,7 @@ export const evaluateStudyQuestion = async ({
     markSchemeText,
     maxMarks: marksAvailable,
     sourceDocuments,
+    userId,
 });
 
 export const generateStudyFollowup = async ({
@@ -247,6 +311,7 @@ export const generateStudyFollowup = async ({
     chatHistory,
     userMessage,
     markSchemeText = "",
+    userId = null,
 }) => {
     if (!process.env.OPENAI_API_KEY) {
         throw new HttpError(503, "Study-session AI chat is not configured.");
@@ -302,6 +367,12 @@ export const generateStudyFollowup = async ({
         ],
         temperature: 0.3,
         max_output_tokens: 2048,
+    });
+    logAiUsage({
+        userId,
+        feature: "study_session_followup",
+        model: getOpenAIModel(),
+        response,
     });
     const payload = extractToolJson(response, FOLLOWUP_SCHEMA.name);
     const answer = String(

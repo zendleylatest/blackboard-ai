@@ -6,6 +6,7 @@ import {
 
 import {
     findUserByIdSafe,
+    findUserById,
     markProfileCompleted,
 } from "../../models/auth/User.js";
 
@@ -124,8 +125,18 @@ export const completeProfileService = async ({
 
         } else {
 
+            const fullUser =
+                await findUserById(
+                    user.id
+                );
+
             await createUserProfile(
-                profileData,
+                {
+                    ...profileData,
+                    profilePicUrl:
+                        fullUser?.google_picture_url ||
+                        null,
+                },
                 connection
             );
 
