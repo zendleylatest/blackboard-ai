@@ -230,15 +230,66 @@ export const googleAuthService = async ({
 
     }
 
+    // Per explicit product decision, Google sign-in is allowed to log into
+    // an account that was originally created via Apple, for the same
+    // email — reverted from an earlier reciprocal block (Apple sign-in
+    // still refuses to log into a Google-created account; only this
+    // direction was reverted). Linking the Google id onto the existing
+    // account (without changing its primary auth_provider) lets the user
+    // in without creating a duplicate account for the same email.
     if (
         existingEmailUser &&
         existingEmailUser.auth_provider === "apple"
     ) {
 
-        throw new HttpError(
-            "An account with this email already exists via Apple Sign-In. Please use Apple to sign in.",
-            409
+        if (!existingEmailUser.is_active) {
+            throw new HttpError(
+                "This account has been suspended. Contact support if you believe this is a mistake.",
+                403
+            );
+        }
+
+        if (existingEmailUser.google_id !== googleId) {
+            await updateGoogleId(
+                existingEmailUser.id,
+                googleId
+            );
+        }
+
+        await updateLastLogin(
+            existingEmailUser.id
         );
+
+        if (googlePictureUrl) {
+            await updateGooglePictureUrl(
+                existingEmailUser.id,
+                googlePictureUrl
+            );
+        }
+
+        const linkedUser =
+            await findUserByIdSafe(
+                existingEmailUser.id
+            );
+
+        return {
+
+            message: "Login successful.",
+
+            tokens: {
+                access:
+                    generateAccessToken(linkedUser),
+
+                refresh:
+                    generateRefreshToken(linkedUser),
+            },
+
+            user: linkedUser,
+
+            profile_completed:
+                Boolean(linkedUser.profile_completed),
+
+        };
 
     }
 
@@ -338,6 +389,11 @@ export const googleAuthService = async ({
         await createGoogleUser({
 
             username,
+
+            // Google's raw display name (with spaces intact), kept separate
+            // from the sanitized, underscore-safe `username` so the user's
+            // real name can still be shown once their profile is completed.
+            displayName: payload.name || null,
 
             email,
 

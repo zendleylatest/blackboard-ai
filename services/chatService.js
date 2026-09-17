@@ -323,6 +323,45 @@ export const submitMcqWrongReview = async (
         };
     }
 
+    // The RAG-retrieved sources above are a best-effort similarity search and
+    // may miss (or misidentify) the exact paper the MCQs came from. Since we
+    // already know that paper for certain, guarantee it appears in `sources`
+    // so "Open PDF" in the Sources sheet always resolves to the right
+    // document instead of depending on what RAG happened to surface.
+    const guaranteedSources = [
+        {
+            chunk_id: 0,
+            doc_id: questionPaper.id,
+            page: 0,
+            qref: "",
+            subject_code: thread.subject_code || "",
+            year: questionPaper.year || "",
+            series: questionPaper.series || "",
+            document_type: questionPaper.document_type || "past_paper",
+            paper: questionPaper.paper || "",
+            variant: questionPaper.variant || "",
+        },
+        ...(markScheme ? [{
+            chunk_id: -1,
+            doc_id: markScheme.id,
+            page: 0,
+            qref: "",
+            subject_code: thread.subject_code || "",
+            year: questionPaper.year || "",
+            series: questionPaper.series || "",
+            document_type: "marking_scheme",
+            paper: questionPaper.paper || "",
+            variant: questionPaper.variant || "",
+        }] : []),
+    ];
+    const existingDocIds = new Set(
+        (response.sources || []).map((source) => Number(source.doc_id || source.doc?.id))
+    );
+    response.sources = [
+        ...guaranteedSources.filter((source) => !existingDocIds.has(Number(source.doc_id))),
+        ...(response.sources || []),
+    ];
+
     const assistantMessage = await createChatMessage({
         threadId,
         role: "assistant",

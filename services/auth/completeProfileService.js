@@ -98,11 +98,20 @@ export const completeProfileService = async ({
                 connection
             );
 
+        const fullUserForName =
+            await findUserById(
+                user.id
+            );
+
         const profileData = {
 
             userId: user.id,
 
+            // `first_name` holds the raw display name captured at sign-in
+            // (e.g. from Google, spaces intact); `username` is sanitized
+            // to be underscore-safe and unique, so it's only a fallback.
             fullName:
+                fullUserForName?.first_name ||
                 user.username,
 
             age:
@@ -125,16 +134,11 @@ export const completeProfileService = async ({
 
         } else {
 
-            const fullUser =
-                await findUserById(
-                    user.id
-                );
-
             await createUserProfile(
                 {
                     ...profileData,
                     profilePicUrl:
-                        fullUser?.google_picture_url ||
+                        fullUserForName?.google_picture_url ||
                         null,
                 },
                 connection

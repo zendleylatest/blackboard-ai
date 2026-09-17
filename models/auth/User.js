@@ -158,6 +158,7 @@ export const createUser = async (
 
 export const createGoogleUser = async ({
     username,
+    displayName,
     email,
     googleId,
     password,
@@ -187,7 +188,7 @@ export const createGoogleUser = async ({
         )
         VALUES
         (
-            ?, 0, ?, '', '', 0, 1, NOW(),
+            ?, 0, ?, ?, '', 0, 1, NOW(),
             ?, 1, 0, 'student', NOW(),
             'google', ?, 0, ?
         )
@@ -198,6 +199,7 @@ export const createGoogleUser = async ({
         [
             password,
             username,
+            displayName ?? "",
             email,
             googleId,
             googlePictureUrl ?? null,

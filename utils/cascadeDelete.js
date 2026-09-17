@@ -66,32 +66,69 @@ const getPrimaryKey = async (connection, schema, table) => {
     return rows[0].COLUMN_NAME;
 };
 
+// Table structure (which tables reference it, whether it has children of its
+// own, its primary key) is identical for every row processed in a single
+// cascade — only the row values differ. Without caching, a user with (say)
+// a thousand chat messages triggered a thousand repeats of the *same*
+// information_schema queries for "does api_chatmessage have children?",
+// "what's api_chatattachment's primary key?", etc. — that redundant
+// round-trip volume, not any single slow query, was the real cost behind
+// account deletion taking long enough to feel hung. Caching by table name
+// for the lifetime of one deleteDependentRows() call (shared across the
+// whole recursion via the `cache` param) cuts this from O(rows) to O(tables)
+// introspection queries.
+const getCachedReferences = async (connection, schema, table, column, cache) => {
+    const key = `refs:${table}.${column}`;
+    if (!cache.has(key)) {
+        cache.set(key, await getReferences(connection, schema, table, column));
+    }
+    return cache.get(key);
+};
+
+const getCachedHasAnyReferences = async (connection, schema, table, cache) => {
+    const key = `hasRefs:${table}`;
+    if (!cache.has(key)) {
+        cache.set(key, await hasAnyReferences(connection, schema, table));
+    }
+    return cache.get(key);
+};
+
+const getCachedPrimaryKey = async (connection, schema, table, cache) => {
+    const key = `pk:${table}`;
+    if (!cache.has(key)) {
+        cache.set(key, await getPrimaryKey(connection, schema, table));
+    }
+    return cache.get(key);
+};
+
 export const deleteDependentRows = async (
     connection,
     schema,
     parentTable,
     parentColumn,
     parentValue,
-    ancestry = new Set()
+    ancestry = new Set(),
+    cache = new Map()
 ) => {
     const nodeKey = `${parentTable}.${parentColumn}`;
     if (ancestry.has(nodeKey)) {
         throw new Error(`Cyclic foreign-key dependency detected at ${nodeKey}.`);
     }
     const nextAncestry = new Set(ancestry).add(nodeKey);
-    const references = await getReferences(
+    const references = await getCachedReferences(
         connection,
         schema,
         parentTable,
-        parentColumn
+        parentColumn,
+        cache
     );
 
     for (const reference of references) {
         const childTable = reference.child_table;
         const childColumn = reference.child_column;
 
-        if (await hasAnyReferences(connection, schema, childTable)) {
-            const primaryKey = await getPrimaryKey(connection, schema, childTable);
+        if (await getCachedHasAnyReferences(connection, schema, childTable, cache)) {
+            const primaryKey = await getCachedPrimaryKey(connection, schema, childTable, cache);
             const [children] = await connection.execute(
                 `SELECT ${quoteIdentifier(primaryKey)} AS id
                  FROM ${quoteIdentifier(childTable)}
@@ -106,7 +143,8 @@ export const deleteDependentRows = async (
                     childTable,
                     primaryKey,
                     child.id,
-                    nextAncestry
+                    nextAncestry,
+                    cache
                 );
             }
         }

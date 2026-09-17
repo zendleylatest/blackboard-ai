@@ -13,7 +13,7 @@ import {
     findChatThreadById,
     updateChatThreadActivity,
 } from "../models/ChatThread.js";
-import { serializeChatMessage } from "./chatThreadService.js";
+import { generateChatTitle, serializeChatMessage } from "./chatThreadService.js";
 import {
     checkUsageLimit,
     incrementUsage,
@@ -280,7 +280,15 @@ export const evaluateWithAiChecker = async (
             tokens_used: result.tokens_used,
         },
     });
+    // Checker threads are always brand-new (see the comment on thread
+    // creation above), so unlike regular chat there's no existing title to
+    // preserve — but they previously never got one at all, showing up
+    // untitled in the sidebar unlike regular Chat Assistant threads.
+    const threadTitle = mode === "past_paper"
+        ? generateChatTitle(context.question, thread.subject_code || "")
+        : generateChatTitle(question, thread.subject_code || "");
     await updateChatThreadActivity(threadId, {
+        title: threadTitle,
         preview: `AI Checker: ${result.marks_awarded}/${result.max_marks} (${Number(result.percentage || 0).toFixed(0)}%)`,
         lastMessageAt: new Date(),
     });
