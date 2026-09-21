@@ -1,4 +1,5 @@
 import { executeQuery } from "../../utils/databaseHelper.js";
+import { normalizeEmail } from "../../utils/normalizeEmail.js";
 
 
 /*
@@ -28,7 +29,7 @@ export const findPendingUserByEmail = async (email) => {
         LIMIT 1
     `;
 
-    const rows = await executeQuery(sql, [email]);
+    const rows = await executeQuery(sql, [normalizeEmail(email)]);
 
     return rows[0] || null;
 };
@@ -81,7 +82,7 @@ export const createPendingUser = async (
     const result = await executeQuery(
         sql,
         [
-            pendingUser.email,
+            normalizeEmail(pendingUser.email),
             pendingUser.username,
             pendingUser.password,
             pendingUser.fullName,
@@ -168,7 +169,7 @@ export const deletePendingUserByEmail = async (
 
     await executeQuery(
         sql,
-        [email],
+        [normalizeEmail(email)],
         connection
     );
 

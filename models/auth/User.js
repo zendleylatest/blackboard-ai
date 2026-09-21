@@ -1,4 +1,5 @@
 import { executeQuery } from "../../utils/databaseHelper.js";
+import { normalizeEmail } from "../../utils/normalizeEmail.js";
 
 
 /*
@@ -53,7 +54,7 @@ export const findUserByEmail = async (email) => {
         LIMIT 1
     `;
 
-    const rows = await executeQuery(sql, [email]);
+    const rows = await executeQuery(sql, [normalizeEmail(email)]);
 
     return rows[0] || null;
 };
@@ -143,7 +144,7 @@ export const createUser = async (
             "",
             0,
             1,
-            user.email,
+            normalizeEmail(user.email),
             1,
             0,
             "student",
@@ -200,7 +201,7 @@ export const createGoogleUser = async ({
             password,
             username,
             displayName ?? "",
-            email,
+            normalizeEmail(email),
             googleId,
             googlePictureUrl ?? null,
         ]
@@ -270,7 +271,7 @@ export const createAppleUser = async ({
         [
             password,
             username,
-            email,
+            normalizeEmail(email),
             appleUserId,
         ]
     );
