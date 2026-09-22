@@ -1,0 +1,986 @@
+=== api_studysession ===
+export const createStudySession = async ({
+    userId,
+    subjectId,
+    questionPaperId,
+    markSchemeId,
+    title,
+}) => {
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await executeQuery(
+        `
+        INSERT INTO api_studysession
+            (id, title, status, questions_data, questions_answered,
+             total_questions, total_marks_available, total_marks_earned,
+             created_at, updated_at, completed_at, user_id, subject_id,
+             question_paper_id, mark_scheme_id)
+        VALUES (?, ?, 'in_progress', '{}', 0, 0, 0, 0, NOW(6), NOW(6), NULL, ?, ?, ?, ?)
+        `,
+        [id, title, userId, subjectId, questionPaperId, markSchemeId]
+    );
+    return findStudySession(id, userId);
+---
+    userId,
+    questionsData,
+    questions
+) => {
+    const totalMarks = questions.reduce(
+        (total, question) => total + Number(question.marks_available || 0),
+        0
+    );
+    await executeQuery(
+        `
+        UPDATE api_studysession
+        SET questions_data = ?, total_questions = ?, total_marks_available = ?,
+            updated_at = NOW(6)
+        WHERE id = ? AND user_id = ?
+        `,
+        [
+            JSON.stringify(questionsData),
+            questions.length,
+            totalMarks,
+            normalizeUuid(sessionId),
+---
+            evaluationTimeSeconds || 0,
+            JSON.stringify(tokensUsed || {}),
+            normalizeUuid(answerId),
+        ]
+    );
+};
+
+export const updateSessionProgress = async (sessionId, userId, complete = false) => {
+    await executeQuery(
+        `
+        UPDATE api_studysession ss
+        SET questions_answered = (
+                SELECT COUNT(*)
+                FROM api_questionanswer qa
+                INNER JOIN api_sessionquestion sq ON sq.id = qa.session_question_id
+                WHERE sq.session_id = ss.id AND qa.is_latest = 1
+            ),
+            total_marks_earned = COALESCE((
+                SELECT SUM(qe.marks_awarded)
+                FROM api_questionevaluation qe
+---
+=== api_sessionquestion ===
+            JSON.stringify(questionsData),
+            questions.length,
+            totalMarks,
+            normalizeUuid(sessionId),
+            userId,
+        ]
+    );
+    for (const question of questions) {
+        await executeQuery(
+            `
+            INSERT INTO api_sessionquestion
+                (id, question_number, question_part, question_subpart,
+                 question_text, marks_available, pdf_page_number,
+                 display_order, created_at, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(6), ?)
+            `,
+            [
+                crypto.randomUUID().replace(/-/g, ""),
+                question.question_number || "",
+                question.question_part || "",
+---
+=== api_questionanswer ===
+        answers.find((answer) => Boolean(answer.is_latest))?.evaluation || null
+    );
+};
+
+export const createQuestionAnswer = async ({
+    questionId,
+    answerText,
+    revisionNumber,
+}) => {
+    await executeQuery(
+        "UPDATE api_questionanswer SET is_latest = 0 WHERE session_question_id = ? AND is_latest = 1",
+        [normalizeUuid(questionId)]
+    );
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await executeQuery(
+        `
+        INSERT INTO api_questionanswer
+            (id, answer_text, is_latest, revision_number, submitted_at, session_question_id)
+        VALUES (?, ?, 1, ?, NOW(6), ?)
+        `,
+---
+    answerText,
+    revisionNumber,
+}) => {
+    await executeQuery(
+        "UPDATE api_questionanswer SET is_latest = 0 WHERE session_question_id = ? AND is_latest = 1",
+        [normalizeUuid(questionId)]
+    );
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await executeQuery(
+        `
+        INSERT INTO api_questionanswer
+            (id, answer_text, is_latest, revision_number, submitted_at, session_question_id)
+        VALUES (?, ?, 1, ?, NOW(6), ?)
+        `,
+        [id, answerText, revisionNumber, normalizeUuid(questionId)]
+    );
+    return id;
+};
+
+export const createQuestionAnswerAttachment = async ({
+---
+        ]
+    );
+};
+
+export const updateSessionProgress = async (sessionId, userId, complete = false) => {
+    await executeQuery(
+        `
+        UPDATE api_studysession ss
+        SET questions_answered = (
+                SELECT COUNT(*)
+                FROM api_questionanswer qa
+                INNER JOIN api_sessionquestion sq ON sq.id = qa.session_question_id
+                WHERE sq.session_id = ss.id AND qa.is_latest = 1
+            ),
+            total_marks_earned = COALESCE((
+                SELECT SUM(qe.marks_awarded)
+                FROM api_questionevaluation qe
+                INNER JOIN api_questionanswer qa ON qa.id = qe.answer_id
+                INNER JOIN api_sessionquestion sq ON sq.id = qa.session_question_id
+                WHERE sq.session_id = ss.id AND qa.is_latest = 1
+---
+=== api_questionanswerattachment ===
+export const createQuestionAnswerAttachment = async ({
+    answerId,
+    gcsKey,
+    originalFilename,
+    kind,
+    sizeBytes,
+}) => {
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await executeQuery(
+        `
+        INSERT INTO api_questionanswerattachment
+            (id, gcs_key, original_filename, kind, size_bytes, created_at, answer_id)
+        VALUES (?, ?, ?, ?, ?, NOW(6), ?)
+        `,
+        [id, gcsKey, originalFilename, kind, sizeBytes, normalizeUuid(answerId)]
+    );
+};
+
+export const createQuestionEvaluation = async ({
+    answerId,
+---
+=== api_questionevaluation ===
+    feedback,
+    markSchemeText,
+    questionText,
+    modelUsed,
+    evaluationTimeSeconds,
+    tokensUsed,
+}) => {
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await executeQuery(
+        `
+        INSERT INTO api_questionevaluation
+            (id, marks_awarded, max_marks, percentage, marking_breakdown,
+             feedback, mark_scheme_text, question_text, model_used,
+             evaluation_time_seconds, tokens_used, evaluated_at, answer_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(6), ?)
+        `,
+        [
+            id,
+            marksAwarded,
+            maxMarks,
+---
+        `
+        UPDATE api_studysession ss
+        SET questions_answered = (
+                SELECT COUNT(*)
+                FROM api_questionanswer qa
+                INNER JOIN api_sessionquestion sq ON sq.id = qa.session_question_id
+                WHERE sq.session_id = ss.id AND qa.is_latest = 1
+            ),
+            total_marks_earned = COALESCE((
+                SELECT SUM(qe.marks_awarded)
+                FROM api_questionevaluation qe
+                INNER JOIN api_questionanswer qa ON qa.id = qe.answer_id
+                INNER JOIN api_sessionquestion sq ON sq.id = qa.session_question_id
+                WHERE sq.session_id = ss.id AND qa.is_latest = 1
+            ), 0),
+            status = CASE WHEN ? = 1 THEN 'completed' ELSE status END,
+            completed_at = CASE WHEN ? = 1 THEN COALESCE(completed_at, NOW(6)) ELSE completed_at END,
+            updated_at = NOW(6)
+        WHERE ss.id = ? AND ss.user_id = ?
+        `,
+---
+=== api_questionchatmessage ===
+export const createQuestionChatMessage = async ({
+    questionId,
+    role,
+    text,
+    relatedAnswerId = null,
+    sources = [],
+}) => {
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await executeQuery(
+        `
+        INSERT INTO api_questionchatmessage
+            (id, role, text, sources, created_at, session_question_id, related_answer_id)
+        VALUES (?, ?, ?, ?, NOW(6), ?, ?)
+        `,
+        [
+            id,
+            role,
+            text,
+            JSON.stringify(sources || []),
+            normalizeUuid(questionId),
+---
+=== api_chatthread ===
+ * Create a new ChatThread.
+ */
+export const createChatThread = async (
+    userId,
+    subjectId,
+    title,
+    connection = null
+) => {
+    const threadId = crypto.randomUUID().replace(/-/g, "");
+    const sql = `
+        INSERT INTO api_chatthread (
+            id,
+            user_id,
+            subject_id,
+            title,
+            summary,
+            last_message_preview,
+            last_message_at,
+            openai_vector_store_id,
+            created_at,
+---
+
+/**
+ * Update the title of a ChatThread.
+ */
+export const updateChatThreadTitle = async (
+    threadId,
+    title,
+    connection = null
+) => {
+    const sql = `
+        UPDATE api_chatthread
+        SET
+            title = ?,
+            updated_at = NOW(6)
+        WHERE id = ?
+    `;
+
+    return executeQuery(
+        sql,
+        [title, normalizeUuid(threadId)],
+---
+        String(preview || "").slice(0, 240),
+        lastMessageAt,
+    ];
+    if (title !== undefined) {
+        fields.unshift("title = ?");
+        params.unshift(String(title || "").slice(0, 120));
+    }
+    params.push(normalizeUuid(threadId));
+    return executeQuery(
+        `
+        UPDATE api_chatthread
+        SET ${fields.join(", ")}
+        WHERE id = ?
+        `,
+        params,
+        connection
+    );
+};
+
+/**
+---
+=== api_chatmessage ===
+    text = "",
+    tokensIn = null,
+    tokensOut = null,
+    modelName = "",
+    chunkIds = [],
+    sources = [],
+    metadata = {},
+}, connection = null) => {
+    await executeQuery(
+        `
+        INSERT INTO api_chatmessage
+            (id, thread_id, role, mode, text, tokens_in, tokens_out,
+             model_name, chunk_ids, sources, metadata, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(6))
+        `,
+        [
+            normalizeUuid(id),
+            normalizeUuid(threadId),
+            role,
+            mode,
+---
+=== api_chatattachment ===
+    attachmentIds,
+    threadId,
+    userId,
+    messageId,
+    connection = null
+) => {
+    if (!Array.isArray(attachmentIds) || attachmentIds.length === 0) return;
+    const placeholders = attachmentIds.map(() => "?").join(", ");
+    await executeQuery(
+        `
+        UPDATE api_chatattachment
+        SET message_id = ?
+        WHERE thread_id = ?
+          AND uploader_id = ?
+          AND id IN (${placeholders})
+        `,
+        [
+            normalizeUuid(messageId),
+            normalizeUuid(threadId),
+            userId,
+---
+    userId,
+    originalFilename,
+    mime,
+    sizeBytes = 0,
+    kind = "other",
+    status = "uploading",
+    gcsKey = "",
+}) => {
+    await executeQuery(
+        `
+        INSERT INTO api_chatattachment
+            (id, thread_id, uploader_id, original_filename, mime, size_bytes,
+             kind, status, openai_file_id, gcs_key, preview_url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, '', NOW(6))
+        `,
+        [
+            normalizeUuid(id),
+            normalizeUuid(threadId),
+            userId,
+            originalFilename,
+---
+    if (fields.length === 0) {
+        return findChatAttachmentById(attachmentId, threadId, userId);
+    }
+    params.push(
+        normalizeUuid(attachmentId),
+        normalizeUuid(threadId),
+        userId
+    );
+    await executeQuery(
+        `
+        UPDATE api_chatattachment
+        SET ${fields.join(", ")}
+        WHERE id = ? AND thread_id = ? AND uploader_id = ?
+        `,
+        params
+    );
+    return findChatAttachmentById(attachmentId, threadId, userId);
+};
+
+/**
+---
+=== api_aicheckerevaluation ===
+    markingRubric = {},
+    feedback = "",
+    strengths = [],
+    improvements = [],
+    modelUsed = "",
+    evaluationTimeSeconds = null,
+}) => {
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await executeQuery(
+        `
+        INSERT INTO api_aicheckerevaluation
+            (id, mode, question_text, student_answer, question_number,
+             question_part, question_subpart, marks_awarded, max_marks,
+             marking_rubric, feedback, strengths, improvements, model_used,
+             evaluation_time_seconds, created_at, message_id, question_paper_id,
+             thread_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(6), ?, ?, ?)
+        `,
+        [
+            id,
+---
+=== api_usersubscription ===
+    const isActivation = [
+        "INITIAL_PURCHASE",
+        "RENEWAL",
+        "PRODUCT_CHANGE",
+        "UNCANCELLATION",
+    ].includes(eventType);
+    const isCancellation = ["CANCELLATION", "EXPIRATION"].includes(eventType);
+
+    await executeQuery(
+        `
+        INSERT INTO api_usersubscription (
+            tier, revenuecat_app_user_id, store, product_id,
+            is_active, expires_at, original_purchase_date,
+            cancellation_date, last_webhook_event,
+            created_at, updated_at, user_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?)
+        ON DUPLICATE KEY UPDATE
+            tier = CASE
+                WHEN ? THEN VALUES(tier)
+---
+            if (!PREMIUM_TIERS.has(tier)) {
+                throw new HttpError(400, "Manual grants must use the Plus or Pro tier.");
+            }
+            const expiresAt = updates.subscription_expires_at
+                ? new Date(updates.subscription_expires_at)
+                : null;
+            if (expiresAt && expiresAt <= new Date()) {
+                throw new HttpError(400, "The premium grant expiry must be in the future.");
+            }
+            await connection.execute(
+                `INSERT INTO api_usersubscription
+                    (tier, revenuecat_app_user_id, store, product_id, is_active,
+                     expires_at, original_purchase_date, cancellation_date,
+                     last_webhook_event, created_at, updated_at, user_id)
+                 VALUES (?, NULL, 'promotional', 'manual_admin_grant', 1,
+                         ?, NOW(), NULL, 'MANUAL_ADMIN_GRANT', NOW(), NOW(), ?)
+                 ON DUPLICATE KEY UPDATE
+                    tier = VALUES(tier), store = 'promotional',
+                    product_id = 'manual_admin_grant', is_active = 1,
+                    expires_at = VALUES(expires_at),
+---
+                [tier, expiresAt, userId]
+            );
+        } else if (subscriptionAction === "revoke") {
+            if (existing.subscription_store && existing.subscription_store !== "promotional") {
+                throw new HttpError(
+                    409,
+                    "Store subscriptions cannot be revoked manually. Manage this subscription through RevenueCat."
+                );
+            }
+            await connection.execute(
+                `UPDATE api_usersubscription
+                 SET tier = 'free', is_active = 0, expires_at = NOW(),
+                     cancellation_date = NOW(), last_webhook_event = 'MANUAL_ADMIN_REVOKE',
+                     updated_at = NOW()
+                 WHERE user_id = ? AND store = 'promotional'`,
+                [userId]
+            );
+        }
+
+        await connection.commit();
+---
+=== api_userusagelimit ===
+        `,
+        [userId]
+    );
+    return rows.length > 0;
+};
+
+const getOrCreateUsage = async (userId) => {
+    let rows = await executeQuery(
+        `
+        SELECT *
+        FROM api_userusagelimit
+        WHERE user_id = ?
+        LIMIT 1
+        `,
+        [userId]
+    );
+    if (rows.length === 0) {
+        await executeQuery(
+            `
+            INSERT INTO api_userusagelimit
+---
+        SELECT *
+        FROM api_userusagelimit
+        WHERE user_id = ?
+        LIMIT 1
+        `,
+        [userId]
+    );
+    if (rows.length === 0) {
+        await executeQuery(
+            `
+            INSERT INTO api_userusagelimit
+                (user_id, flashcard_sets_created, quizzes_created, ai_checker_uses,
+                 past_paper_questions_used, study_sessions_created, chat_messages_sent,
+                 mcq_wrong_reviews_used, current_week_end, created_at, updated_at)
+            VALUES (?, 0, 0, 0, 0, 0, 0, 0, ?, NOW(), NOW())
+            `,
+            [userId, nextFriday()]
+        );
+        rows = await executeQuery(
+            `
+---
+            `,
+            [userId]
+        );
+    }
+
+    const usage = rows[0];
+    if (shouldResetUsage(usage.current_week_end)) {
+        const newWeekEnd = nextFriday();
+        await executeQuery(
+            `
+            UPDATE api_userusagelimit
+            SET ${WEEKLY_USAGE_COLUMNS.map((column) => `${column} = 0`).join(",\n                ")},
+                current_week_end = ?,
+                updated_at = NOW()
+            WHERE user_id = ?
+            `,
+            [newWeekEnd, userId]
+        );
+        for (const column of WEEKLY_USAGE_COLUMNS) {
+            usage[column] = 0;
+---
+    }
+    return { allowed: true, tier };
+};
+
+export const incrementUsage = async (userId, featureName, count = 1) => {
+    const feature = FEATURE_LIMITS[featureName];
+    if (!feature) return;
+    await getOrCreateUsage(userId);
+    await executeQuery(
+        `
+        UPDATE api_userusagelimit
+        SET ${feature.column} = ${feature.column} + ?,
+            updated_at = NOW()
+        WHERE user_id = ?
+        `,
+        [Math.max(1, Number(count) || 1), userId]
+    );
+};
+
+export const checkSessionQuestionLimit = async (
+---
+=== api_aiusagelog ===
+    userId,
+    feature,
+    model,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    estimatedCostUsd,
+}) => {
+
+    const sql = `
+        INSERT INTO api_aiusagelog
+        (
+            user_id,
+            feature,
+            model,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+            estimated_cost_usd,
+            created_at
+---
+=== api_sessionquestionusage ===
+) => {
+    const column = featureName === "answer_revisions"
+        ? "answer_revisions"
+        : featureName === "followup_messages"
+            ? "followup_messages"
+            : null;
+    if (!column) return;
+    const normalizedId = String(questionId || "").replace(/-/g, "").toLowerCase();
+    await executeQuery(
+        `
+        INSERT INTO api_sessionquestionusage
+            (answer_revisions, followup_messages, created_at, updated_at, session_question_id)
+        VALUES (?, ?, NOW(), NOW(), ?)
+        ON DUPLICATE KEY UPDATE
+            ${column} = ${column} + 1,
+            updated_at = NOW()
+        `,
+        [
+            column === "answer_revisions" ? 1 : 0,
+            column === "followup_messages" ? 1 : 0,
+---
+=== api_documentextractioncache ===
+        questionPaperId,
+        markSchemeId,
+        extractionData,
+        extractionModel,
+        processingTimeSeconds,
+    },
+    connection = null
+) => {
+    await executeQuery(
+        `
+        INSERT INTO api_documentextractioncache (
+            question_paper_id, mark_scheme_id, extraction_data,
+            extraction_model, processing_time_seconds, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+            extraction_data = VALUES(extraction_data),
+            extraction_model = VALUES(extraction_model),
+            processing_time_seconds = VALUES(processing_time_seconds),
+            created_at = NOW()
+---
+=== api_devicetoken ===
+import { executeQuery } from "../utils/databaseHelper.js";
+
+export const registerToken = async ({
+    userId,
+    token,
+    platform,
+}) => {
+    const currentRows = await executeQuery(
+        "SELECT user_id FROM api_devicetoken WHERE token = ? LIMIT 1",
+        [token]
+    );
+    const created = currentRows.length === 0;
+
+    await executeQuery(
+        `
+        INSERT INTO api_devicetoken (
+            token, platform, is_active, created_at, updated_at, user_id
+        )
+---
+    platform,
+}) => {
+    const currentRows = await executeQuery(
+        "SELECT user_id FROM api_devicetoken WHERE token = ? LIMIT 1",
+        [token]
+    );
+    const created = currentRows.length === 0;
+
+    await executeQuery(
+        `
+        INSERT INTO api_devicetoken (
+            token, platform, is_active, created_at, updated_at, user_id
+        )
+        VALUES (?, ?, 1, NOW(), NOW(), ?)
+        ON DUPLICATE KEY UPDATE
+            platform = VALUES(platform),
+            is_active = 1,
+            updated_at = NOW(),
+            user_id = VALUES(user_id)
+        `,
+---
+            user_id = VALUES(user_id)
+        `,
+        [token, platform, userId]
+    );
+
+    return created;
+};
+
+export const unregisterToken = async (userId, token) => executeQuery(
+    `
+    UPDATE api_devicetoken
+    SET is_active = 0, updated_at = NOW()
+    WHERE user_id = ? AND token = ?
+    `,
+    [userId, token]
+);
+
+export const findBroadcastTokens = async (tier) => {
+    const params = [];
+    let clause = "";
+---
+        ${clause}
+        `,
+        params
+    );
+};
+
+export const deactivateTokens = async (tokens) => {
+    if (tokens.length === 0) return;
+    await executeQuery(
+        `
+        UPDATE api_devicetoken
+        SET is_active = 0, updated_at = NOW()
+        WHERE token IN (${tokens.map(() => "?").join(", ")})
+        `,
+        tokens
+    );
+};
+
+---
+=== api_questionmapping ===
+=== api_mcqanswerkey ===
+=== api_ragchunk ===
+=== api_flashcardset ===
+        topic,
+        difficultyLevel,
+        isAiGenerated,
+        sources,
+        createdAt,
+    },
+    connection
+) => {
+    await executeQuery(
+        `
+        INSERT INTO api_flashcardset (
+            id, title, description, topic, difficulty_level,
+            is_ai_generated, card_count, reviews_today, reviews_total,
+            completed_today, completed_total, mastery, streak_count,
+            subject_id, user_id, sources, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?)
+        `,
+        [
+            id,
+---
+
+    return result.insertId;
+};
+
+export const updateSetCardCount = async (
+    setId,
+    count,
+    connection = null
+) => {
+    await executeQuery(
+        "UPDATE api_flashcardset SET card_count = ? WHERE id = ?",
+        [count, setId],
+        connection
+    );
+};
+
+export const deleteFlashcardSet = async (
+    setId,
+    userId,
+    connection = null
+---
+
+    return Number(rows[0]?.average_box || 1);
+};
+
+export const updateSetAfterReview = async (
+    { setId, mastery, reviewCount = 1 },
+    connection
+) => {
+    await executeQuery(
+        `
+        UPDATE api_flashcardset
+        SET reviews_total = reviews_total + ?,
+            reviews_today = reviews_today + ?,
+            mastery = ?
+        WHERE id = ?
+        `,
+        [reviewCount, reviewCount, mastery, setId],
+        connection
+    );
+};
+---
+        connection
+    );
+};
+
+export const updateSetLastStudied = async (
+    setId,
+    studiedAt,
+    connection
+) => {
+    await executeQuery(
+        "UPDATE api_flashcardset SET last_studied = ? WHERE id = ?",
+        [studiedAt, setId],
+        connection
+    );
+};
+
+export const findCompletedSessions = async (
+    setId,
+    userId,
+    connection = null
+---
+        completedAt,
+        mastery,
+        completedToday,
+        streakCount,
+        streakDate,
+    },
+    connection
+) => {
+    await executeQuery(
+        `
+        UPDATE api_flashcardset
+        SET completed_total = completed_total + 1,
+            completed_today = ?,
+            last_completed_at = ?,
+            last_studied = ?,
+            mastery = ?,
+            streak_count = ?,
+            last_streak_date = ?
+        WHERE id = ?
+        `,
+---
+=== api_flashcard ===
+        frontText,
+        backText,
+        difficultyLevel,
+        sources,
+        createdAt,
+    },
+    connection
+) => {
+    const result = await executeQuery(
+        `
+        INSERT INTO api_flashcard (
+            subject_id, set_id, front_text, back_text,
+            difficulty_level, difficulty, leitner_box,
+            times_reviewed, sources, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)
+        `,
+        [
+            subjectId,
+            setId,
+---
+};
+
+export const updateReviewedCard = async (
+    cardId,
+    result,
+    reviewedAt,
+    connection
+) => {
+    await executeQuery(
+        `
+        UPDATE api_flashcard
+        SET times_reviewed = times_reviewed + 1,
+            last_reviewed_at = ?,
+            leitner_box = CASE
+                WHEN ? = 'easy' THEN LEAST(5, leitner_box + 1)
+                ELSE GREATEST(1, leitner_box - 1)
+            END
+        WHERE id = ?
+        `,
+        [reviewedAt, result, cardId],
+---
+=== api_quiz ===
+        submittedAt,
+        score,
+        total,
+        streakCount,
+        streakDate,
+    },
+    connection
+) => {
+    await executeQuery(
+        `
+        UPDATE api_quiz
+        SET
+            times_attempted = times_attempted + 1,
+            last_score = ?,
+            last_attempted_at = ?,
+            streak_count = ?,
+            last_streak_date = ?
+        WHERE id = ?
+        `,
+        [
+---
+        questionCount,
+        durationSec,
+        difficulty,
+        sources,
+        createdAt,
+    },
+    connection
+) => {
+    await executeQuery(
+        `
+        INSERT INTO api_quiz (
+            id, title, prompt, question_count, duration_sec,
+            times_attempted, last_score, last_attempted_at,
+            created_at, updated_at, subject_id, user_id,
+            difficulty, sources
+        )
+        VALUES (?, ?, ?, ?, ?, 0, NULL, NULL, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+            normalizeUuid(id),
+---
+=== api_quizquestion ===
+        stem,
+        options,
+        correctIndex,
+        explanation,
+        sources,
+    },
+    connection
+) => {
+    const result = await executeQuery(
+        `
+        INSERT INTO api_quizquestion (
+            stem, option_a, option_b, option_c, option_d,
+            correct_index, explanation, quiz_id, sources
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+            stem,
+            options[0],
+            options[1],
+---
+=== api_quizattempt ===
+        id,
+        quizId,
+        userId,
+        total,
+        startedAt,
+    },
+    connection
+) => {
+    await executeQuery(
+        `
+        INSERT INTO api_quizattempt (
+            id,
+            started_at,
+            submitted_at,
+            duration_sec,
+            score,
+            total,
+            quiz_id,
+            user_id,
+            wrong_reviewed_at
+---
+    {
+        attemptId,
+        submittedAt,
+        durationSec,
+        score,
+    },
+    connection
+) => {
+    await executeQuery(
+        `
+        UPDATE api_quizattempt
+        SET
+            submitted_at = ?,
+            duration_sec = ?,
+            score = ?
+        WHERE id = ?
+          AND submitted_at IS NULL
+        `,
+        [
+            submittedAt,
+---
+        [normalizeUuid(quizId), userId]
+    );
+};
+
+export const markWrongReviewComplete = async (
+    attemptId,
+    reviewedAt
+) => {
+    await executeQuery(
+        `
+        UPDATE api_quizattempt
+        SET wrong_reviewed_at = ?
+        WHERE id = ?
+        `,
+        [reviewedAt, normalizeUuid(attemptId)]
+    );
+};
+
+export const createQuiz = async (
+    {
+---

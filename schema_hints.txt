@@ -1,0 +1,66 @@
+TABLE: api_user
+  INSERT COLS:  password, is_superuser, username, first_name, last_name, is_staff, is_active, date_joined, email, is_verified, login_attempts, role, created_at, auth_provider, profile_completed 
+TABLE: api_questionmapping
+TABLE: api_document
+TABLE: api_aicheckerevaluation
+  INSERT COLS: id, mode, question_text, student_answer, question_number, question_part, question_subpart, marks_awarded, max_marks, marking_rubric, feedback, strengths, improvements, model_used, evaluation_time_seconds, created_at, message_id, question_paper_id, thread_id
+TABLE: api_aiusagelog
+TABLE: api_quiz
+  INSERT COLS:  id, title, prompt, question_count, duration_sec, times_attempted, last_score, last_attempted_at, created_at, updated_at, subject_id, user_id, difficulty, sources 
+TABLE: api_flashcardset
+  INSERT COLS:  id, title, description, topic, difficulty_level, is_ai_generated, card_count, reviews_today, reviews_total, completed_today, completed_total, mastery, streak_count, subject_id, user_id, sources, created_at, updated_at 
+TABLE: api_chatmessage
+  INSERT COLS: id, thread_id, role, mode, text, tokens_in, tokens_out, model_name, chunk_ids, sources, metadata, created_at
+TABLE: api_studysession
+  INSERT COLS: id, title, status, questions_data, questions_answered, total_questions, total_marks_available, total_marks_earned, created_at, updated_at, completed_at, user_id, subject_id, question_paper_id, mark_scheme_id
+TABLE: api_flashcardstudysession
+  INSERT COLS: started_at, total_cards, easy_count, hard_count, duration_sec, set_id, user_id
+TABLE: api_quizattempt
+TABLE: api_flashcardreviewevent
+  INSERT COLS: result, reviewed_at, card_id, session_id
+TABLE: api_subject
+TABLE: api_chatthread
+TABLE: api_usersubject
+  INSERT COLS:  user_id, subject_id, created_at 
+  INSERT COLS:  user_id, subject_id, created_at 
+  INSERT COLS:  user_id, subject_id, created_at 
+TABLE: api_chatattachment
+  INSERT COLS: id, thread_id, uploader_id, original_filename, mime, size_bytes, kind, status, openai_file_id, gcs_key, preview_url, created_at
+TABLE: api_documentextractioncache
+  INSERT COLS:  question_paper_id, mark_scheme_id, extraction_data, extraction_model, processing_time_seconds, created_at 
+TABLE: api_flashcard
+  INSERT COLS:  subject_id, set_id, front_text, back_text, difficulty_level, difficulty, leitner_box, times_reviewed, sources, created_at 
+TABLE: api_devicetoken
+  INSERT COLS:  token, platform, is_active, created_at, updated_at, user_id 
+  INSERT COLS:  token, platform, is_active, created_at, updated_at, user_id 
+TABLE: api_usersubscription
+  INSERT COLS:  tier, revenuecat_app_user_id, store, product_id, is_active, expires_at, original_purchase_date, cancellation_date, last_webhook_event, created_at, updated_at, user_id 
+  INSERT COLS: tier, revenuecat_app_user_id, store, product_id, is_active, expires_at, original_purchase_date, cancellation_date, last_webhook_event, created_at, updated_at, user_id
+TABLE: api_quizquestion
+  INSERT COLS:  stem, option_a, option_b, option_c, option_d, correct_index, explanation, quiz_id, sources 
+TABLE: api_quizanswer
+  INSERT COLS:  choice_index, is_correct, attempt_id, question_id 
+  INSERT COLS:  choice_index, is_correct, attempt_id, question_id 
+TABLE: api_ragchunk
+TABLE: api_sessionquestion
+  INSERT COLS: id, question_number, question_part, question_subpart, question_text, marks_available, pdf_page_number, display_order, created_at, session_id
+TABLE: api_questionanswer
+  INSERT COLS: id, answer_text, is_latest, revision_number, submitted_at, session_question_id
+  INSERT COLS: id, answer_text, is_latest, revision_number, submitted_at, session_question_id
+TABLE: api_questionanswerattachment
+  INSERT COLS: id, gcs_key, original_filename, kind, size_bytes, created_at, answer_id
+TABLE: api_questionevaluation
+  INSERT COLS: id, marks_awarded, max_marks, percentage, marking_breakdown, feedback, mark_scheme_text, question_text, model_used, evaluation_time_seconds, tokens_used, evaluated_at, answer_id
+TABLE: api_questionchatmessage
+  INSERT COLS: id, role, text, sources, created_at, session_question_id, related_answer_id
+TABLE: api_mcqquiz
+TABLE: api_userprofile
+  INSERT COLS:  full_name, age, class_level, exam_board, profile_pic_url, user_id 
+  INSERT COLS:  user_id, full_name, age, class_level, exam_board, profile_pic_url, phone 
+  INSERT COLS: full_name, age, class_level, exam_board, profile_pic_url, user_id
+TABLE: api_pendinguser
+TABLE: api_mcqanswerkey
+TABLE: api_userusagelimit
+  INSERT COLS: user_id, flashcard_sets_created, quizzes_created, ai_checker_uses, past_paper_questions_used, study_sessions_created, chat_messages_sent, mcq_wrong_reviews_used, current_week_end, created_at, updated_at
+TABLE: api_sessionquestionusage
+  INSERT COLS: answer_revisions, followup_messages, created_at, updated_at, session_question_id

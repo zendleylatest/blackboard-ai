@@ -1,0 +1,23 @@
+# Blackboard AI MySQL Schema Audit V2
+
+| Table | Required by active code? | Feature | Columns actually required | Parent tables | Risk | Recommended action |
+|---|---|---|---|---|---|---|
+| api_studysession | Yes | General | created_at, subject_id, id, thread_id, role, mode, user_id, started_at, quiz_id, title, status, questions_data, questions_answered, total_questions, total_marks_available, total_marks_earned, updated_at, completed_at, question_paper_id, mark_scheme_id | subject_id, thread_id, user_id, quiz_id, question_paper_id, mark_scheme_id | Low | CREATE TABLE |
+| api_sessionquestion | Yes | General | id, question_number, question_part, question_subpart, question_text, marks_available, pdf_page_number, display_order, created_at, session_id, user_id, session_question_id | session_id, user_id, session_question_id | Low | CREATE TABLE |
+| api_questionanswer | Yes | General | session_question_id, revision_number, answer_id, is_latest, id, submitted_at, questions_answered, total_marks_earned | session_question_id, answer_id | Low | CREATE TABLE |
+| api_questionanswerattachment | Yes | General | session_question_id, revision_number, answer_id, kind, id, gcs_key, original_filename, size_bytes, created_at | session_question_id, answer_id | Low | CREATE TABLE |
+| api_questionevaluation | Yes | General | answer_id, session_question_id, feedback, id, marks_awarded, max_marks, percentage, marking_breakdown, mark_scheme_text, question_text, model_used, evaluation_time_seconds, tokens_used, evaluated_at, questions_answered, total_marks_earned, status, completed_at, updated_at | answer_id, session_question_id | Low | CREATE TABLE |
+| api_questionchatmessage | Yes | General | answer_id, session_question_id, session_id, role, text, sources, id, created_at, related_answer_id | answer_id, session_question_id, session_id | Low | CREATE TABLE |
+| api_chatthread | Yes | General | updated_at, subject_id, user_id, id, is_active, title, created_at | subject_id, user_id | Low | CREATE TABLE |
+| api_chatmessage | Yes | General | created_at, subject_id, id, thread_id, role, mode, question_paper_id, user_id, started_at, submitted_at, text, tokens_in, tokens_out, model_name, chunk_ids, sources, metadata | subject_id, thread_id, question_paper_id, user_id | Low | CREATE TABLE |
+| api_chatattachment | Yes | General | message_id, thread_id, uploader_id, id, original_filename, mime, size_bytes, kind, status, openai_file_id, gcs_key, preview_url, created_at | message_id, thread_id, uploader_id | Low | CREATE TABLE |
+| api_aicheckerevaluation | Yes | General | feedback, strengths, improvements, id, mode, question_text, student_answer, question_number, question_part, question_subpart, marks_awarded, max_marks, marking_rubric, model_used, evaluation_time_seconds, created_at, message_id, question_paper_id, thread_id, title, user_id, role, subject_id, started_at, session_id | message_id, question_paper_id, thread_id, user_id, subject_id, session_id | Low | CREATE TABLE |
+| api_usersubscription | Yes | General | tier, user_id, is_active, id, revenuecat_app_user_id, store, product_id, expires_at, original_purchase_date, cancellation_date, last_webhook_event, created_at, updated_at | user_id | Low | CREATE TABLE |
+| api_userusagelimit | Yes | General | id, user_id, flashcard_sets_created, quizzes_created, ai_checker_uses, past_paper_questions_used, study_sessions_created, chat_messages_sent, mcq_wrong_reviews_used, current_week_end, created_at, updated_at, tier, feature | user_id | Low | CREATE TABLE |
+| api_aiusagelog | Yes | General | id, feature, user_id, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd, created_at | user_id | Low | CREATE TABLE |
+| api_sessionquestionusage | Yes | General | id, tier, answer_revisions, followup_messages, session_question_id, created_at, updated_at | session_question_id | Low | CREATE TABLE |
+| api_documentextractioncache | Yes | General | id, extraction_data, extraction_model, processing_time_seconds, question_paper_id, mark_scheme_id, created_at | question_paper_id, mark_scheme_id | Low | CREATE TABLE |
+| api_devicetoken | Yes | General | id, token, platform, user_id, is_active, created_at, updated_at, tier | user_id | Low | CREATE TABLE |
+| api_questionmapping | Yes | General | id, document_id, question_number, question_part, question_subpart, mark_scheme_text, max_marks, created_at | document_id | Low | CREATE TABLE |
+| api_mcqanswerkey | Yes | General | total_questions, metadata, updated_at, mark_scheme_id, question_paper_id, subject_id, id | mark_scheme_id, question_paper_id, subject_id | Low | CREATE TABLE |
+| api_ragchunk | Yes | General | id, title, subject_id | subject_id | Low | CREATE TABLE |
