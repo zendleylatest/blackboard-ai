@@ -19,7 +19,12 @@ export const findUserDashboardProfile = async (userId) => {
 };
 
 export const findAllActiveSubjects = async (page = 1, limit = 20, search = '', level = '', examBoard = '') => {
-    const offset = (page - 1) * limit;
+    // LIMIT/OFFSET are inlined as sanitised integers: binding them through a
+    // prepared statement (execute) fails on some MySQL versions with
+    // "Incorrect arguments to mysqld_stmt_execute".
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 200);
+    const safePage = Math.max(parseInt(page, 10) || 1, 1);
+    const offset = (safePage - 1) * safeLimit;
     let query = `
         SELECT id, name, code, level, exam_board, description, is_active
         FROM api_subject
@@ -38,8 +43,7 @@ export const findAllActiveSubjects = async (page = 1, limit = 20, search = '', l
         query += ` AND exam_board = ?`;
         params.push(examBoard);
     }
-    query += ` ORDER BY name ASC LIMIT ? OFFSET ?`;
-    params.push(Number(limit), Number(offset));
+    query += ` ORDER BY name ASC, id ASC LIMIT ${safeLimit} OFFSET ${offset}`;
     
     return executeQuery(query, params);
 };
