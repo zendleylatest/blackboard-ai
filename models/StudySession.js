@@ -221,8 +221,29 @@ export const updateStudySessionExtraction = async (
     questionsData,
     questions
 ) => {
-    const totalMarks = questions.reduce(
-        (total, question) => total + Number(question.marks_available || 0),
+    // LLM output is untrusted: the api_sessionquestion reference columns are
+    // VARCHAR(10) and the numeric ones are INT, so an over-long label, a
+    // non-numeric mark or a non-integer page number would otherwise fail the
+    // INSERT ("Data too long" / "Incorrect integer value") and surface as a
+    // 500 when creating a study session.
+    const toLabel = (value) => String(value ?? "").trim().slice(0, 10);
+    const toInt = (value, fallback = 0) => {
+        const parsed = Math.round(Number(value));
+        return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const cleaned = questions.map((question, index) => ({
+        question_number: toLabel(question.question_number),
+        question_part: toLabel(question.question_part),
+        question_subpart: toLabel(question.question_subpart),
+        question_text: String(question.question_text ?? ""),
+        marks_available: Math.max(0, toInt(question.marks_available)),
+        pdf_page_number: question.pdf_page_number == null
+            ? null
+            : toInt(question.pdf_page_number, null),
+        display_order: toInt(question.display_order, index + 1),
+    }));
+    const totalMarks = cleaned.reduce(
+        (total, question) => total + question.marks_available,
         0
     );
     await executeQuery(
@@ -234,13 +255,13 @@ export const updateStudySessionExtraction = async (
         `,
         [
             JSON.stringify(questionsData),
-            questions.length,
+            cleaned.length,
             totalMarks,
             normalizeUuid(sessionId),
             userId,
         ]
     );
-    for (const question of questions) {
+    for (const question of cleaned) {
         await executeQuery(
             `
             INSERT INTO api_sessionquestion
@@ -251,13 +272,13 @@ export const updateStudySessionExtraction = async (
             `,
             [
                 crypto.randomUUID().replace(/-/g, ""),
-                question.question_number || "",
-                question.question_part || "",
-                question.question_subpart || "",
-                question.question_text || "",
-                Number(question.marks_available || 0),
-                question.pdf_page_number ?? null,
-                Number(question.display_order || 0),
+                question.question_number,
+                question.question_part,
+                question.question_subpart,
+                question.question_text,
+                question.marks_available,
+                question.pdf_page_number,
+                question.display_order,
                 normalizeUuid(sessionId),
             ]
         );

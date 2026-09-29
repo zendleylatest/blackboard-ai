@@ -188,24 +188,6 @@ export const evaluateWithAiChecker = async (
         question = context.question;
     }
 
-    const result = await evaluateAnswerWithAi({
-        question,
-        studentAnswer,
-        subjectCode: thread.subject_code || "",
-        markSchemeText: context?.markSchemeText || "",
-        maxMarks: context?.maxMarks,
-        userId,
-        sourceDocuments: [
-            ...(context
-                ? [context.questionPaper, context.markScheme]
-                : []),
-            ...uploadedAttachments.map((attachment) => ({
-                title: attachment.original_filename,
-                gcs_key: attachment.gcs_key,
-                mime: attachment.mime,
-            })),
-        ],
-    });
     const questionNumber = mode === "past_paper"
         ? String(payload.questionNumber).trim()
         : "";
@@ -236,6 +218,35 @@ export const evaluateWithAiChecker = async (
                 question_part: questionPart,
                 question_subpart: questionSubpart,
             },
+    });
+    // Save the user's submission and title the thread right away, before the
+    // slow AI evaluation, so the chat shows up in history immediately and is
+    // not lost if evaluation fails or the request is interrupted.
+    await updateChatThreadActivity(threadId, {
+        title: mode === "past_paper"
+            ? generateChatTitle(context.question, thread.subject_code || "")
+            : generateChatTitle(question, thread.subject_code || ""),
+        preview: "AI Checker: evaluating...",
+        lastMessageAt: new Date(),
+    });
+
+    const result = await evaluateAnswerWithAi({
+        question,
+        studentAnswer,
+        subjectCode: thread.subject_code || "",
+        markSchemeText: context?.markSchemeText || "",
+        maxMarks: context?.maxMarks,
+        userId,
+        sourceDocuments: [
+            ...(context
+                ? [context.questionPaper, context.markScheme]
+                : []),
+            ...uploadedAttachments.map((attachment) => ({
+                title: attachment.original_filename,
+                gcs_key: attachment.gcs_key,
+                mime: attachment.mime,
+            })),
+        ],
     });
     const evaluation = await createAICheckerEvaluation({
         threadId,

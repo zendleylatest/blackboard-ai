@@ -2,6 +2,7 @@ import crypto from "crypto";
 import HttpError from "../utils/httpError.js";
 import {
     sanitizeStorageFilename,
+    decodeUploadFilename,
     writeResourceFile,
 } from "../utils/localStorage.js";
 import { findDocumentById } from "../models/document/Document.js";
@@ -354,12 +355,13 @@ export const uploadStudySessionAttachment = async (
 ) => {
     await getSessionOrThrow(userId, sessionId);
     if (!file) throw new HttpError(400, "file is required");
-    const filename = sanitizeStorageFilename(file.originalname, "attachment");
+    const originalName = decodeUploadFilename(file.originalname);
+    const filename = sanitizeStorageFilename(originalName, "attachment");
     const key = `study_session_temp/${String(sessionId).replace(/-/g, "")}/${crypto.randomUUID().slice(0, 8)}_${filename}`;
     await writeResourceFile(key, file.buffer);
     return {
         gcs_key: key,
-        filename: file.originalname,
+        filename: originalName.slice(-255),
         kind: classifyFile(file),
         size_bytes: file.size || file.buffer.length,
         mime: file.mimetype || "application/octet-stream",

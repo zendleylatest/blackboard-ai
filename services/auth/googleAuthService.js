@@ -15,6 +15,7 @@ import {
     updateGoogleId,
     updateGooglePictureUrl,
     updateLastLogin,
+    syncStoredEmail,
 } from "../../models/auth/User.js";
 
 import {
@@ -163,6 +164,10 @@ export const googleAuthService = async ({
             );
         }
 
+        if (isEmailVerified) {
+            await syncStoredEmail(existingGoogleUser, email);
+        }
+
         await updateLastLogin(
             existingGoogleUser.id
         );
@@ -218,15 +223,65 @@ export const googleAuthService = async ({
     const existingEmailUser =
         await findUserByEmail(email);
 
+    // Google has verified that the caller owns this mailbox, so signing in
+    // with Google on an email/password account links the Google identity to
+    // that same account (keeping its data) instead of failing with a
+    // "please use email and password" conflict.
     if (
         existingEmailUser &&
         existingEmailUser.auth_provider === "email"
     ) {
 
-        throw new HttpError(
-            "An account with this email already exists. Please sign in with email and password.",
-            409
+        if (!existingEmailUser.is_active) {
+            throw new HttpError(
+                "This account has been suspended. Contact support if you believe this is a mistake.",
+                403
+            );
+        }
+
+        if (existingEmailUser.google_id !== googleId) {
+            await updateGoogleId(
+                existingEmailUser.id,
+                googleId
+            );
+        }
+
+        await syncStoredEmail(existingEmailUser, email);
+
+        await updateLastLogin(
+            existingEmailUser.id
         );
+
+        if (googlePictureUrl) {
+            await updateGooglePictureUrl(
+                existingEmailUser.id,
+                googlePictureUrl
+            );
+        }
+
+        const linkedEmailUser =
+            await findUserByIdSafe(
+                existingEmailUser.id
+            );
+
+        return {
+
+            message: "Login successful.",
+
+            tokens: {
+                access:
+                    generateAccessToken(linkedEmailUser),
+
+                refresh:
+                    generateRefreshToken(linkedEmailUser),
+            },
+
+            user: linkedEmailUser,
+
+            profile_completed:
+                Boolean(linkedEmailUser.profile_completed),
+
+        };
 
     }
 
@@ -255,6 +310,8 @@ export const googleAuthService = async ({
                 googleId
             );
         }
+
+        await syncStoredEmail(existingEmailUser, email);
 
         await updateLastLogin(
             existingEmailUser.id
@@ -311,6 +368,8 @@ export const googleAuthService = async ({
                 googleId
             );
         }
+
+        await syncStoredEmail(existingEmailUser, email);
 
         await updateLastLogin(
             existingEmailUser.id

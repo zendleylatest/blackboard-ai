@@ -1,5 +1,11 @@
 import { executeQuery } from "../../utils/databaseHelper.js";
-import { normalizeEmail } from "../../utils/normalizeEmail.js";
+import {
+    normalizeEmail,
+    canonicalEmail,
+    isGmailAddress,
+    CANONICAL_EMAIL_SQL,
+    GMAIL_DOMAIN_SQL,
+} from "../../utils/normalizeEmail.js";
 
 
 /*
@@ -47,16 +53,74 @@ export const findUserByIdSafe = async (id, connection = null) => {
 };
 
 export const findUserByEmail = async (email) => {
-    const sql = `
+    // Exact (indexed) match first.
+    const exactRows = await executeQuery(
+        `
         SELECT *
         FROM api_user
-        WHERE LOWER(email) = LOWER(?)
+        WHERE LOWER(email) = ?
         LIMIT 1
-    `;
+        `,
+        [normalizeEmail(email)]
+    );
 
-    const rows = await executeQuery(sql, [normalizeEmail(email)]);
+    if (exactRows[0] || !isGmailAddress(email)) {
+        return exactRows[0] || null;
+    }
 
-    return rows[0] || null;
+    // Same Gmail mailbox typed differently (dots / +suffix): accounts created
+    // before emails were stored verbatim have the dots stripped.
+    const canonicalRows = await executeQuery(
+        `
+        SELECT *
+        FROM api_user
+        WHERE ${GMAIL_DOMAIN_SQL}
+          AND ${CANONICAL_EMAIL_SQL} = ?
+        LIMIT 1
+        `,
+        [canonicalEmail(email)]
+    );
+
+    return canonicalRows[0] || null;
+};
+
+/**
+ * Accounts created while emails were Gmail-canonicalised have their dots
+ * stripped (s.ham@gmail.com stored as sham@gmail.com). When the same
+ * mailbox proves itself again with the exact address (typed password login,
+ * or a Google-verified address), restore that exact form. Best effort.
+ */
+export const syncStoredEmail = async (user, exactEmail) => {
+    try {
+        const exact = normalizeEmail(exactEmail);
+        if (
+            !user ||
+            !exact ||
+            normalizeEmail(user.email) === exact ||
+            canonicalEmail(user.email) !== canonicalEmail(exact)
+        ) {
+            return;
+        }
+        await updateUserEmail(user.id, exact);
+    } catch (error) {
+        console.warn("syncStoredEmail skipped:", error.code || error.message);
+    }
+};
+
+export const updateUserEmail = async (
+    userId,
+    email,
+    connection = null
+) => {
+    await executeQuery(
+        `
+        UPDATE api_user
+        SET email = ?
+        WHERE id = ?
+        `,
+        [normalizeEmail(email), userId],
+        connection
+    );
 };
 
 export const findUserByUsername = async (username) => {

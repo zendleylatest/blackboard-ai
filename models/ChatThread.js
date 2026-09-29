@@ -490,8 +490,9 @@ export const createChatAttachment = async ({
             normalizeUuid(id),
             normalizeUuid(threadId),
             userId,
-            originalFilename,
-            mime,
+            // Column limits: original_filename VARCHAR(255), mime VARCHAR(100).
+            String(originalFilename || "attachment").slice(-255),
+            String(mime || "application/octet-stream").slice(0, 100),
             sizeBytes,
             kind,
             status,

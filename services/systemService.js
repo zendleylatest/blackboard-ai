@@ -117,7 +117,7 @@ export const getDashboard = async (userId) => {
     };
 };
 
-export const listMysqlSubjects = async () => {
-    const subjects = await findAllActiveSubjects();
+export const listMysqlSubjects = async (page = 1, limit = 20, search = '', level = '', examBoard = '') => {
+    const subjects = await findAllActiveSubjects(page, limit, search, level, examBoard);
     return subjects.map(serializeSubject);
 };

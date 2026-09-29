@@ -291,8 +291,15 @@ export const findDocumentsBySubject = async (
             END,
             d.document_type ASC,
             d.paper ASC,
-            d.variant ASC
+            d.variant ASC,
+            d.id ASC
     `;
+
+    // Optional paging (limit + offset). Without a limit the full list is
+    // returned, so older app versions keep working.
+    if (filters.limit) {
+        sql += ` LIMIT ${Number(filters.limit)} OFFSET ${Number(filters.offset || 0)}`;
+    }
 
     return executeQuery(
         sql,
@@ -438,4 +445,16 @@ export const findMcqReviewDocuments = async (
         answerKey,
         markScheme,
     };
+};
+
+export const findDocumentTypesBySubject = async (
+    subjectId,
+    connection = null
+) => {
+    const rows = await executeQuery(
+        "SELECT DISTINCT document_type FROM api_document WHERE subject_id = ?",
+        [subjectId],
+        connection
+    );
+    return rows.map((row) => row.document_type);
 };

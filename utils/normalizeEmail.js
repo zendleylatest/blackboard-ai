@@ -1,22 +1,23 @@
 const GMAIL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
 
 /**
- * Canonicalizes an email address the same way Gmail treats mailbox
- * addresses internally: dots in the local part and anything after a "+"
- * are insignificant to Gmail's delivery, so "flutter.dev1.odl@gmail.com"
- * and "flutterdev1odl@gmail.com" are the same inbox to the user even
- * though they're different strings.
+ * The email exactly as the user entered it / Google returned it, only
+ * trimmed and lower-cased (email addresses are case-insensitive in practice).
  *
- * Without this, a user who signs up (or signs in with Google) using one
- * dotted/undotted variant and later types a different variant at login
- * gets a false "no account exists" - two different-looking rows would
- * otherwise need to exist for what is really one mailbox. Applying this
- * at every point an email is stored or looked up keeps a single Gmail
- * mailbox mapped to exactly one account regardless of which variant was
- * typed.
+ * This is what gets STORED and displayed. Dots and "+suffix" parts are kept
+ * as-is: "s.hamzaali2000@gmail.com" must not become
+ * "shamzaali2000@gmail.com".
  */
-export const normalizeEmail = (value) => {
-    const trimmed = String(value || "").trim().toLowerCase();
+export const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+/**
+ * Gmail treats "s.ham@gmail.com", "sham@gmail.com" and "sham+x@gmail.com" as
+ * the same mailbox. This canonical form is used ONLY to detect that two
+ * differently-typed addresses are the same Gmail mailbox (so one mailbox
+ * can't end up with two accounts); it is never stored or displayed.
+ */
+export const canonicalEmail = (value) => {
+    const trimmed = normalizeEmail(value);
     const atIndex = trimmed.lastIndexOf("@");
     if (atIndex <= 0) return trimmed;
 
@@ -28,7 +29,26 @@ export const normalizeEmail = (value) => {
     const withoutSubaddress = local.split("+")[0];
     const withoutDots = withoutSubaddress.replaceAll(".", "");
 
-    return `${withoutDots}@${domain}`;
+    return `${withoutDots}@gmail.com`;
 };
+
+export const isGmailAddress = (value) => {
+    const trimmed = normalizeEmail(value);
+    const atIndex = trimmed.lastIndexOf("@");
+    return atIndex > 0 && GMAIL_DOMAINS.has(trimmed.slice(atIndex + 1));
+};
+
+/**
+ * SQL that computes the canonical form of a stored `email` column, matching
+ * canonicalEmail() above. Only meaningful for Gmail rows (see the domain
+ * guard in the callers).
+ */
+export const CANONICAL_EMAIL_SQL = `CONCAT(
+    REPLACE(SUBSTRING_INDEX(SUBSTRING_INDEX(LOWER(email), '@', 1), '+', 1), '.', ''),
+    '@gmail.com'
+)`;
+
+export const GMAIL_DOMAIN_SQL =
+    "SUBSTRING_INDEX(LOWER(email), '@', -1) IN ('gmail.com', 'googlemail.com')";
 
 export default normalizeEmail;

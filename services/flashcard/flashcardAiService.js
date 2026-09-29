@@ -162,11 +162,21 @@ const callModel = async ({
                 { role: "user", content: user },
             ],
             tools: tool.tools,
-            tool_choice: "auto",
-            max_tokens: Math.max(300, count * 300),
+            // Force the tool call: with "auto" the model may answer in plain
+            // text, which yields zero parseable flashcards.
+            tool_choice: { type: "function", function: { name: TOOL_NAME } },
+            max_tokens: Math.max(1000, count * 400),
         });
     } catch (error) {
+        // Previously swallowed silently, which surfaced only as the vague
+        // "AI returned no valid flashcards." with no clue why.
+        console.error(
+            `[FLASHCARDS] OpenAI request failed: status=${error?.status || ""} code=${error?.code || ""} ${error?.message || error}`
+        );
         return { title: "", items: [], sources: [], error };
+    }
+    if (response?.choices?.[0]?.finish_reason === "length") {
+        console.warn("[FLASHCARDS] Response truncated (finish_reason=length); output may be incomplete.");
     }
 
     logAiUsage({ userId, feature: "flashcard_generation", model, response });
@@ -392,6 +402,7 @@ export const generateFlashcardsWithAi = async ({
         userId,
     });
 
+    let lastAttemptError = null;
     let title = primary.title;
     let items = dedupeItems(primary.items);
     let sources = [
@@ -416,6 +427,7 @@ export const generateFlashcardsWithAi = async ({
             startMs,
             userId,
         });
+        lastAttemptError = fallback;
         title = title || fallback.title;
         items = dedupeItems(fallback.items);
         sources = [...sources, ...fallback.sources];
@@ -441,6 +453,16 @@ export const generateFlashcardsWithAi = async ({
     }
 
     if (items.length === 0) {
+        const apiError = [primary, lastAttemptError].find((r) => r?.error)?.error;
+        if (apiError) {
+            const status = Number(apiError.status);
+            throw new HttpError(
+                status === 429 ? 503 : 502,
+                status === 429
+                    ? "The AI service is busy or over quota. Please try again shortly."
+                    : "The AI service failed to respond. Please try again."
+            );
+        }
         throw new HttpError(502, "AI returned no valid flashcards.");
     }
 

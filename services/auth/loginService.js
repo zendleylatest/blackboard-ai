@@ -13,6 +13,7 @@ import {
     updateLastLogin,
     resetLoginAttempts,
     incrementLoginAttempts,
+    syncStoredEmail,
 } from "../../models/auth/User.js";
 
 export const loginService = async ({
@@ -66,6 +67,8 @@ if (!passwordMatched) {
 }
 
 await resetLoginAttempts(user.id);
+
+await syncStoredEmail(user, email);
 
 await updateLastLogin(user.id);
 

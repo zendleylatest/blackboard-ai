@@ -1,5 +1,11 @@
 import { executeQuery } from "../../utils/databaseHelper.js";
-import { normalizeEmail } from "../../utils/normalizeEmail.js";
+import {
+    normalizeEmail,
+    canonicalEmail,
+    isGmailAddress,
+    CANONICAL_EMAIL_SQL,
+    GMAIL_DOMAIN_SQL,
+} from "../../utils/normalizeEmail.js";
 
 
 /*
@@ -22,16 +28,32 @@ export const findPendingUserById = async (id) => {
 };
 
 export const findPendingUserByEmail = async (email) => {
-    const sql = `
+    const exactRows = await executeQuery(
+        `
         SELECT *
         FROM api_pendinguser
-        WHERE LOWER(email) = LOWER(?)
+        WHERE LOWER(email) = ?
         LIMIT 1
-    `;
+        `,
+        [normalizeEmail(email)]
+    );
 
-    const rows = await executeQuery(sql, [normalizeEmail(email)]);
+    if (exactRows[0] || !isGmailAddress(email)) {
+        return exactRows[0] || null;
+    }
 
-    return rows[0] || null;
+    const canonicalRows = await executeQuery(
+        `
+        SELECT *
+        FROM api_pendinguser
+        WHERE ${GMAIL_DOMAIN_SQL}
+          AND ${CANONICAL_EMAIL_SQL} = ?
+        LIMIT 1
+        `,
+        [canonicalEmail(email)]
+    );
+
+    return canonicalRows[0] || null;
 };
 
 export const findPendingUserByUsername = async (username) => {
@@ -162,14 +184,16 @@ export const deletePendingUserByEmail = async (
     connection = null
 ) => {
 
+    // Also clears the same Gmail mailbox typed with different dots / +suffix.
     const sql = `
         DELETE FROM api_pendinguser
-        WHERE LOWER(email) = LOWER(?)
+        WHERE LOWER(email) = ?
+           OR (${GMAIL_DOMAIN_SQL} AND ${CANONICAL_EMAIL_SQL} = ?)
     `;
 
     await executeQuery(
         sql,
-        [normalizeEmail(email)],
+        [normalizeEmail(email), canonicalEmail(email)],
         connection
     );
 

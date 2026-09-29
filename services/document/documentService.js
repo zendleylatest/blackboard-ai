@@ -2,6 +2,7 @@ import {
     findDocuments,
     findDocumentById,
     findDocumentsBySubject,
+    findDocumentTypesBySubject,
     findActiveSubjectByIdentifier,
     incrementDocumentDownloadCount,
     isUserEnrolledInSubject,
@@ -60,15 +61,25 @@ export const getSubjectDocuments = async (
         }
     }
 
-    const documents = await findDocumentsBySubject(
+    const paged = Number(filters.limit) > 0;
+    const limit = paged ? Math.min(Number(filters.limit), 100) : null;
+    const offset = paged ? Math.max(Number(filters.offset) || 0, 0) : 0;
+
+    // Fetch one extra row when paging to know whether another page exists.
+    const rows = await findDocumentsBySubject(
         subject.id,
-        filters
+        paged ? { ...filters, limit: limit + 1, offset } : filters
     );
+    const documents = paged ? rows.slice(0, limit) : rows;
 
     return {
         subject,
         documents: documents.map(formatDocument),
         count: documents.length,
+        has_more: paged ? rows.length > limit : false,
+        available_types: paged
+            ? await findDocumentTypesBySubject(subject.id)
+            : undefined,
     };
 };
 

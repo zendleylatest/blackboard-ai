@@ -81,6 +81,8 @@ export const getSubjectDocumentsController = async (
             paper: req.query.paper || null,
             variant: req.query.variant || null,
             search: req.query.search || null,
+            limit: req.query.limit || null,
+            offset: req.query.offset || null,
         };
 
         const result = await getSubjectDocuments(
@@ -96,6 +98,8 @@ export const getSubjectDocumentsController = async (
             {
                 documents: result.documents,
                 count: result.count,
+                has_more: result.has_more,
+                available_types: result.available_types,
             }
         );
 

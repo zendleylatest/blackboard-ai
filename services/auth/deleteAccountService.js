@@ -42,6 +42,33 @@ export const deleteAccountService = async (
             user.id
         );
 
+        // Tables keyed by user_id / email WITHOUT a foreign key to api_user
+        // are invisible to the schema-driven cascade above, so they must be
+        // cleared explicitly — otherwise their rows survive the deletion and
+        // resurface as "old data" when the same email signs up again (or
+        // when the database ever hands the same user id out again).
+        for (const [table, column, value] of [
+            ["api_aiusagelog", "user_id", user.id],
+            ["api_devicetoken", "user_id", user.id],
+            ["api_userusagelimit", "user_id", user.id],
+            ["api_pendinguser", "email", user.email],
+        ]) {
+            try {
+                await connection.execute(
+                    `DELETE FROM \`${table}\` WHERE ${column === "email" ? "LOWER(email) = LOWER(?)" : `${column} = ?`}`,
+                    [value]
+                );
+            } catch (error) {
+                // Table/column may not exist in every deployment.
+                if (
+                    error.code !== "ER_NO_SUCH_TABLE" &&
+                    error.code !== "ER_BAD_FIELD_ERROR"
+                ) {
+                    throw error;
+                }
+            }
+        }
+
         const deleted =
             await deleteUserById(
                 user.id,

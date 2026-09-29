@@ -18,14 +18,31 @@ export const findUserDashboardProfile = async (userId) => {
     return rows[0] || null;
 };
 
-export const findAllActiveSubjects = async () => executeQuery(
-    `
-    SELECT id, name, code, level, exam_board, description, is_active
-    FROM api_subject
-    WHERE is_active = 1
-    ORDER BY name ASC
-    `
-);
+export const findAllActiveSubjects = async (page = 1, limit = 20, search = '', level = '', examBoard = '') => {
+    const offset = (page - 1) * limit;
+    let query = `
+        SELECT id, name, code, level, exam_board, description, is_active
+        FROM api_subject
+        WHERE is_active = 1
+    `;
+    const params = [];
+    if (search) {
+        query += ` AND (name LIKE ? OR code LIKE ?)`;
+        params.push(`%${search}%`, `%${search}%`);
+    }
+    if (level) {
+        query += ` AND level = ?`;
+        params.push(level);
+    }
+    if (examBoard) {
+        query += ` AND exam_board = ?`;
+        params.push(examBoard);
+    }
+    query += ` ORDER BY name ASC LIMIT ? OFFSET ?`;
+    params.push(Number(limit), Number(offset));
+    
+    return executeQuery(query, params);
+};
 
 export const findEnrolledSubjects = async (userId) => executeQuery(
     `
@@ -98,26 +115,41 @@ export const findProgressSummary = async (userId) => executeQuery(
     [userId]
 );
 
+// Stats are scoped to the user's current class level (O / A): a quiz or
+// flashcard set belongs to a subject, and every subject belongs to exactly
+// one level, so quizzes taken at the other level are not counted.
 export const findUserStats = async (userId) => {
+    const profileRows = await executeQuery(
+        "SELECT class_level FROM api_userprofile WHERE user_id = ? LIMIT 1",
+        [userId]
+    );
+    const level = profileRows[0]?.class_level || null;
+    const levelClause = level ? "AND sub.level = ?" : "";
+    const levelParams = level ? [level] : [];
+
     const [attemptRows, sessionRows, reviewRows] = await Promise.all([
         executeQuery(
             `
             SELECT
                 COUNT(*) AS quizzes_taken,
-                COALESCE(SUM(score), 0) AS score_sum,
-                COALESCE(SUM(total), 0) AS total_sum
-            FROM api_quizattempt
-            WHERE user_id = ? AND submitted_at IS NOT NULL
+                COALESCE(SUM(a.score), 0) AS score_sum,
+                COALESCE(SUM(a.total), 0) AS total_sum
+            FROM api_quizattempt a
+            INNER JOIN api_quiz q ON q.id = a.quiz_id
+            INNER JOIN api_subject sub ON sub.id = q.subject_id
+            WHERE a.user_id = ? AND a.submitted_at IS NOT NULL ${levelClause}
             `,
-            [userId]
+            [userId, ...levelParams]
         ),
         executeQuery(
             `
             SELECT COUNT(*) AS completed
-            FROM api_flashcardstudysession
-            WHERE user_id = ? AND completed_at IS NOT NULL
+            FROM api_flashcardstudysession ss
+            INNER JOIN api_flashcardset fs ON fs.id = ss.set_id
+            INNER JOIN api_subject sub ON sub.id = fs.subject_id
+            WHERE ss.user_id = ? AND ss.completed_at IS NOT NULL ${levelClause}
             `,
-            [userId]
+            [userId, ...levelParams]
         ),
         executeQuery(
             `
@@ -126,9 +158,11 @@ export const findUserStats = async (userId) => {
                 COUNT(DISTINCT e.card_id) AS unique_cards
             FROM api_flashcardreviewevent e
             INNER JOIN api_flashcardstudysession ss ON ss.id = e.session_id
-            WHERE ss.user_id = ?
+            INNER JOIN api_flashcardset fs ON fs.id = ss.set_id
+            INNER JOIN api_subject sub ON sub.id = fs.subject_id
+            WHERE ss.user_id = ? ${levelClause}
             `,
-            [userId]
+            [userId, ...levelParams]
         ),
     ]);
 

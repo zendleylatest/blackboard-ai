@@ -41,6 +41,10 @@ import {
     deleteAccountController,
 } from "../../controllers/auth/deleteAccountController.js";
 
+import {
+    checkAuthStatusController,
+} from "../../controllers/auth/statusController.js";
+
 import { authenticate } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -132,6 +136,13 @@ router.post(
     refreshTokenValidation,
     validate,
     refreshTokenController
+);
+
+// Check Auth Status (Polling Endpoint)
+router.get(
+    "/status",
+    authenticate,
+    checkAuthStatusController
 );
 
 //admin boostrap missing

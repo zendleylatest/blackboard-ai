@@ -87,9 +87,26 @@ export const sanitizeStorageFilename = (filename, fallback = "file") => {
     const safe = basename
         .normalize("NFKC")
         .replace(/[^a-zA-Z0-9._-]+/g, "_")
-        .replace(/^\.+/, "")
-        .slice(0, 180);
-    return safe || fallback;
+        .replace(/^\.+/, "");
+    // Cap the length but keep the extension: a blind slice used to chop it
+    // off long names, and very long names overflow filesystem/DB limits
+    // (the atomic writer appends a 41-char temp suffix to the name).
+    const extension = path.extname(safe).slice(0, 12);
+    const stem = safe.slice(0, safe.length - path.extname(safe).length).slice(0, 100);
+    return `${stem}${extension}` || fallback;
+};
+
+// Multer decodes multipart filenames as latin1, which turns any non-ASCII
+// name (e.g. "résumé.pdf", Arabic/Urdu names) into mojibake. Re-decode as
+// UTF-8 when that round-trips cleanly.
+export const decodeUploadFilename = (name) => {
+    const raw = String(name || "");
+    try {
+        const decoded = Buffer.from(raw, "latin1").toString("utf8");
+        return decoded.includes("\uFFFD") ? raw : decoded;
+    } catch {
+        return raw;
+    }
 };
 
 export const ensureStorageDirectories = async () => {

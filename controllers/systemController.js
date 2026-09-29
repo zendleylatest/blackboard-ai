@@ -45,7 +45,8 @@ export const getDashboardController = async (req, res, next) => {
 
 export const listMysqlSubjectsController = async (req, res, next) => {
     try {
-        const data = await listMysqlSubjects();
+        const { page = 1, limit = 20, search = '', level = '', examBoard = '' } = req.query;
+        const data = await listMysqlSubjects(Number(page), Number(limit), search, level, examBoard);
         return successResponse(res, 200, "Subjects retrieved successfully.", data);
     } catch (error) {
         next(error);

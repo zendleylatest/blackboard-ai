@@ -1,85 +1,12 @@
-import {
-    findSubjectById,
-    findUserSubject,
-    createUserSubject,
-    deleteUserSubject,
-} from "../../models/subjects/UserSubject.js";
+const fs = require('fs');
+const file = '/Users/odl-mac/Desktop/wasif/flutter/blackboard-ai-project/backend_nodejs/services/subjects/userSubjectService.js';
+let content = fs.readFileSync(file, 'utf8');
 
-import {
-    deleteUserSubjectChatThreads,
-} from "../chatThreadService.js";
-import pool, { getConnection } from "../../config/database.js";
-import { deleteDependentRows } from "../../utils/cascadeDelete.js";
+// I saw double imports of getConnection earlier, let's clean that up
+content = content.replace(/import \{ getConnection \} from "\.\.\/\.\.\/config\/database\.js";\nimport \{ deleteDependentRows \} from "\.\.\/\.\.\/utils\/cascadeDelete\.js";\nimport \{ getConnection \} from "\.\.\/\.\.\/config\/database\.js";\nimport \{ deleteDependentRows \} from "\.\.\/\.\.\/utils\/cascadeDelete\.js";/g, 'import { getConnection } from "../../config/database.js";\nimport { deleteDependentRows } from "../../utils/cascadeDelete.js";');
 
-/**
- * Enroll a user in an active subject.
- */
-export const enrollUserInSubject = async (
-    userId,
-    subjectId
-) => {
-    const subject = await findSubjectById(
-        subjectId
-    );
-
-    if (!subject) {
-        const error = new Error(
-            "Subject not found"
-        );
-
-        error.statusCode = 404;
-        throw error;
-    }
-
-    // Each class level (O / A) keeps its own subjects and data, so a student
-    // can only add subjects belonging to the level they have selected.
-    const [profileRows] = await pool.execute(
-        "SELECT class_level FROM api_userprofile WHERE user_id = ? LIMIT 1",
-        [userId]
-    );
-    const userLevel = profileRows[0]?.class_level;
-    if (userLevel && subject.level && userLevel !== subject.level) {
-        const error = new Error(
-            `This subject belongs to ${subject.level} Level. Switch your class level to add it.`
-        );
-
-        error.statusCode = 400;
-        throw error;
-    }
-
-    const existingEnrollment =
-        await findUserSubject(
-            userId,
-            subjectId
-        );
-
-    if (existingEnrollment) {
-        const error = new Error(
-            "Already enrolled in this subject"
-        );
-
-        error.statusCode = 400;
-        throw error;
-    }
-
-    await createUserSubject(
-        userId,
-        subjectId
-    );
-
-    return {
-        subject,
-        message: `Successfully enrolled in ${subject.name}`,
-    };
-};
-
-/**
- * Unenroll a user from an active subject.
- *
- * Also deletes all ChatThreads belonging to the
- * user and subject, matching the original Django behavior.
- */
-export const unenrollUserFromSubject = async (userId, subjectId) => {
+const regex = /export const unenrollUserFromSubject = async \([\s\S]*?^};/m;
+const replacement = `export const unenrollUserFromSubject = async (userId, subjectId) => {
     const subject = await findSubjectById(subjectId);
     if (!subject) {
         const error = new Error("Subject not found");
@@ -148,7 +75,7 @@ export const unenrollUserFromSubject = async (userId, subjectId) => {
         await connection.commit();
 
         return {
-            message: `Successfully removed from ${subject.name}`,
+            message: \`Successfully removed from \${subject.name}\`,
             deleted_chat_threads: threads.length,
             deleted_quizzes: quizzes.length,
             deleted_flashcards: flashcards.length,
@@ -161,4 +88,8 @@ export const unenrollUserFromSubject = async (userId, subjectId) => {
     } finally {
         connection.release();
     }
-};
+};`;
+
+content = content.replace(regex, replacement);
+fs.writeFileSync(file, content);
+console.log('Replaced.');

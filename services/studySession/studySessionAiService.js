@@ -151,9 +151,25 @@ export const extractQuestionsFromDocuments = async ({
         // was needlessly doubling the upload latency on the critical path.
         [questionPaperFile, markSchemeFile] = await Promise.all([
             uploadOpenAiFile(client, questionPaper),
-            uploadOpenAiFile(client, markScheme),
+            markScheme ? uploadOpenAiFile(client, markScheme) : Promise.resolve(null),
         ]);
         const startedAt = Date.now();
+        
+        const userContent = [
+            {
+                type: "input_text",
+                text: `Paper: ${questionPaper.title}\nSubject: ${questionPaper.subject_code || ""}`,
+            },
+            { type: "input_text", text: "QUESTION PAPER:" },
+            { type: "input_file", file_id: questionPaperFile },
+        ];
+        if (markSchemeFile) {
+            userContent.push(
+                { type: "input_text", text: "MARK SCHEME:" },
+                { type: "input_file", file_id: markSchemeFile }
+            );
+        }
+
         const response = await client.responses.create({
             model: getOpenAIModel(),
             tools: [{
@@ -171,21 +187,12 @@ export const extractQuestionsFromDocuments = async ({
                     role: "system",
                     content: [{
                         type: "input_text",
-                        text: "Extract every question, part, and subpart from the question paper. Use the mark scheme to verify marks. Preserve exact text and return all questions through the provided function.",
+                        text: "Extract every question, part, and subpart from the question paper." + (markScheme ? " Use the mark scheme to verify marks." : "") + " Preserve exact text and return all questions through the provided function.",
                     }],
                 },
                 {
                     role: "user",
-                    content: [
-                        {
-                            type: "input_text",
-                            text: `Paper: ${questionPaper.title}\nSubject: ${questionPaper.subject_code || ""}`,
-                        },
-                        { type: "input_text", text: "QUESTION PAPER:" },
-                        { type: "input_file", file_id: questionPaperFile },
-                        { type: "input_text", text: "MARK SCHEME:" },
-                        { type: "input_file", file_id: markSchemeFile },
-                    ],
+                    content: userContent,
                 },
             ],
             temperature: 0.1,

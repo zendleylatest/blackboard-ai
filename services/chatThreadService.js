@@ -1,3 +1,5 @@
+import { getConnection } from "../config/database.js";
+import { deleteDependentRows } from "../utils/cascadeDelete.js";
 import {
     findChatThreadsByUser,
     findChatThreadById,
@@ -162,10 +164,28 @@ export const deleteUserChatThread = async (
         throw error;
     }
 
-    await deleteChatThread(
-        threadId,
-        userId
-    );
+    // Some foreign keys on the live database (e.g. api_chatattachment.thread_id)
+    // don't cascade, so a bare DELETE fails with a constraint error. Clear
+    // every dependent row first, in one transaction.
+    const connection = await getConnection();
+    try {
+        await connection.beginTransaction();
+        const rawId = String(thread.id).replace(/-/g, "").toLowerCase();
+        await deleteDependentRows(
+            connection,
+            process.env.DB_NAME,
+            "api_chatthread",
+            "id",
+            rawId
+        );
+        await deleteChatThread(threadId, userId, connection);
+        await connection.commit();
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 
     return { success: true };
 };

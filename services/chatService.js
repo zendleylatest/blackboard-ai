@@ -28,6 +28,7 @@ import { generateChatAssistantResponse } from "./chat/chatAiService.js";
 import {
     readResourceFile,
     sanitizeStorageFilename,
+    decodeUploadFilename,
     writeResourceFile,
 } from "../utils/localStorage.js";
 
@@ -106,6 +107,19 @@ export const sendChatMessage = async (
         userMessage.id
     );
 
+    // Persist the thread's title/preview the moment the first message is
+    // stored — not only after the (slow) AI reply — so the chat appears in
+    // history with its proper name immediately and survives a failed or
+    // interrupted generation.
+    const hasDefaultTitle = !thread.title || thread.title.trim() === "New Chat" || thread.title.trim() === "";
+    await updateChatThreadActivity(threadId, {
+        title: hasDefaultTitle
+            ? generateChatTitle(cleanText, thread.subject_code || "")
+            : undefined,
+        preview: cleanText,
+        lastMessageAt: new Date(),
+    });
+
     const attachments = [];
     for (const id of Array.isArray(attachmentIds) ? attachmentIds : []) {
         const attachment = await findChatAttachmentById(id, threadId, userId);
@@ -172,9 +186,10 @@ export const sendChatMessage = async (
         sources: response.sources || [],
         metadata,
     });
-    const title = thread.title?.trim()
-        ? undefined
-        : generateChatTitle(cleanText, thread.subject_code || "");
+    const isDefaultTitle = !thread.title || thread.title.trim() === "New Chat" || thread.title.trim() === "";
+    const title = isDefaultTitle
+        ? generateChatTitle(cleanText, thread.subject_code || "")
+        : undefined;
     await updateChatThreadActivity(threadId, {
         title,
         preview: assistantMessage.text,
@@ -403,14 +418,15 @@ export const uploadChatAttachment = async (
     await getThreadOrThrow(userId, threadId);
     if (!file) throw new HttpError(400, "file is required");
     const id = crypto.randomUUID();
-    const kind = classifyAttachment(file.originalname, file.mimetype);
-    const filename = sanitizeStorageFilename(file.originalname, "attachment");
+    const originalName = decodeUploadFilename(file.originalname);
+    const kind = classifyAttachment(originalName, file.mimetype);
+    const filename = sanitizeStorageFilename(originalName, "attachment");
     const key = `chat_temp/${threadId}/${id}/${filename}`;
     const attachment = await createChatAttachment({
         id,
         threadId,
         userId,
-        originalFilename: file.originalname,
+        originalFilename: originalName,
         mime: file.mimetype || "application/octet-stream",
         sizeBytes: file.size || file.buffer.length,
         kind,
