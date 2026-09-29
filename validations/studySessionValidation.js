@@ -14,7 +14,9 @@ export const listStudySessionsValidation = [
 
 export const createStudySessionValidation = [
     body("question_paper_id").isInt({ min: 1 }),
-    body("mark_scheme_id").isInt({ min: 1 }),
+    // The app sends only the question paper; the mark scheme is matched
+    // server-side when not supplied.
+    body("mark_scheme_id").optional({ nullable: true }).isInt({ min: 1 }),
     body("subject_id").optional({ nullable: true }).isInt({ min: 1 }),
 ];
 

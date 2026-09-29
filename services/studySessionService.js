@@ -7,7 +7,10 @@ import {
 } from "../utils/localStorage.js";
 import { findDocumentById } from "../models/document/Document.js";
 import { findSubjectById } from "../models/ChatThread.js";
-import { findQuestionMappingsByDocument } from "../models/AiChecker.js";
+import {
+    findMatchingMarkScheme,
+    findQuestionMappingsByDocument,
+} from "../models/AiChecker.js";
 import {
     createQuestionAnswer,
     createQuestionAnswerAttachment,
@@ -68,10 +71,17 @@ export const createUserStudySession = async (
     const usage = await checkUsageLimit(userId, "study_sessions");
     if (!usage.allowed) throw new HttpError(429, usage.message);
     const questionPaper = await findDocumentById(questionPaperId);
-    const markScheme = await findDocumentById(markSchemeId);
-    if (!questionPaper || !markScheme) {
-        throw new HttpError(404, "Document not found.");
+    if (!questionPaper) throw new HttpError(404, "Question paper not found.");
+    const markScheme = markSchemeId
+        ? await findDocumentById(markSchemeId)
+        : await findMatchingMarkScheme(questionPaper);
+    if (!markScheme) {
+        throw new HttpError(
+            404,
+            `No matching mark scheme found for ${questionPaper.title}.`
+        );
     }
+    markSchemeId = markScheme.id;
     const subject = subjectId
         ? await findSubjectById(subjectId)
         : {
