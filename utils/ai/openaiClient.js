@@ -18,6 +18,10 @@ export const getOpenAIClient = (apiKey = process.env.OPENAI_API_KEY) => {
     if (!cachedClient || cachedApiKey !== apiKey) {
         cachedClient = new OpenAI({
             apiKey,
+            // OpenAI's per-minute token limit is shared by every user, so
+            // short 429s are normal under load: let the SDK back off and retry
+            // (it honours the Retry-After header) instead of failing at once.
+            maxRetries: Number(process.env.OPENAI_MAX_RETRIES || 5),
             timeout: getTimeoutMs(),
         });
         cachedApiKey = apiKey;

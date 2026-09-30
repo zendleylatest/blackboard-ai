@@ -11,6 +11,7 @@ import {
     findUserByIdSafe,
     createAppleUser,
     updateAppleId,
+    updateUserDisplayName,
     updateLastLogin,
 } from "../../models/auth/User.js";
 
@@ -197,6 +198,10 @@ export const appleAuthService = async ({
             );
         }
 
+        if (fullName && !existingAppleUser.first_name) {
+            await updateUserDisplayName(existingAppleUser.id, fullName);
+        }
+
         await updateLastLogin(
             existingAppleUser.id
         );
@@ -370,6 +375,10 @@ export const appleAuthService = async ({
             username,
 
             email: userEmail,
+
+            // Real name from Apple's first authorization, so the profile
+            // shows "Jane Doe" rather than a name derived from the email.
+            displayName: fullName || null,
 
             appleUserId,
 

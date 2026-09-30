@@ -14,6 +14,11 @@ export const completeProfileValidation = [
             'class_level must be "O" or "A".'
         ),
 
+    body("full_name")
+        .optional({ values: "falsy" })
+        .isString()
+        .isLength({ max: 100 }),
+
     body("age")
         .optional({
             values: "falsy",

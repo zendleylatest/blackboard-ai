@@ -20,6 +20,7 @@ export const completeProfileService = async ({
     userId,
     age,
     class_level,
+    full_name,
 }) => {
 
     const user =
@@ -111,6 +112,7 @@ export const completeProfileService = async ({
             // (e.g. from Google, spaces intact); `username` is sanitized
             // to be underscore-safe and unique, so it's only a fallback.
             fullName:
+                String(full_name || "").trim().slice(0, 100) ||
                 fullUserForName?.first_name ||
                 user.username,
 

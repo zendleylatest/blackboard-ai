@@ -35,9 +35,15 @@ export const getSubscriptionStatus = async (userId) => {
         };
     }
 
+    // A grant/subscription past its expiry no longer counts, even if nothing
+    // has flipped is_active yet (manual admin grants have no webhook to do so).
+    const expired = subscription.expires_at &&
+        new Date(subscription.expires_at) <= new Date();
+    const active = Boolean(subscription.is_active) && !expired;
+
     return {
-        tier: subscription.is_active ? subscription.tier : "free",
-        is_active: Boolean(subscription.is_active),
+        tier: active ? subscription.tier : "free",
+        is_active: active,
         product_id: subscription.product_id,
         store: subscription.store,
         expires_at: subscription.expires_at
@@ -70,6 +76,22 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
     }
 
     const eventType = String(event.type || "");
+
+    // A manual admin grant ("promotional") is not a store purchase, so
+    // RevenueCat knows nothing about it. Its cancellation/expiration/billing
+    // events (e.g. for an old or transferred store purchase) must not wipe out
+    // a grant that is still valid. Real purchase events still take over.
+    if (["CANCELLATION", "EXPIRATION", "BILLING_ISSUE"].includes(eventType)) {
+        const current = await findSubscriptionByUserId(user.id);
+        const grantStillValid = current &&
+            current.store === "promotional" &&
+            current.is_active &&
+            (!current.expires_at || new Date(current.expires_at) > new Date());
+        if (grantStillValid) {
+            return { status: "ok", warning: "manual_grant_preserved" };
+        }
+    }
+
     if ([
         "INITIAL_PURCHASE",
         "RENEWAL",

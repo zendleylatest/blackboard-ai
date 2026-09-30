@@ -539,3 +539,26 @@ export const createQuestionChatMessage = async ({
 
 export { formatUuid, iso, parseJson };
 
+
+// A fully-created session for the same paper made in the last few minutes.
+// Used to make session creation idempotent: if the first request's response
+// was lost (proxy timeout / dropped connection) while the server carried on
+// and finished, a retry must return that session instead of making a twin.
+export const findRecentStudySessionForPaper = async (
+    userId,
+    questionPaperId,
+    withinMinutes = 10
+) => {
+    const rows = await executeQuery(
+        `
+        SELECT id
+        FROM api_studysession
+        WHERE user_id = ? AND question_paper_id = ? AND total_questions > 0
+          AND created_at > (NOW(6) - INTERVAL ? MINUTE)
+        ORDER BY created_at DESC
+        LIMIT 1
+        `,
+        [userId, questionPaperId, Number(withinMinutes)]
+    );
+    return rows[0] || null;
+};

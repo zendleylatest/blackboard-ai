@@ -23,6 +23,7 @@ import {
     findSessionQuestion,
     findSessionQuestionDetail,
     findStudySession,
+    findRecentStudySessionForPaper,
     findStudySessions,
     formatUuid,
     iso,
@@ -60,7 +61,7 @@ export const listUserStudySessions = async (
     filters = {}
 ) => findStudySessions(userId, filters);
 
-export const createUserStudySession = async (
+const createUserStudySessionOnce = async (
     userId,
     {
         questionPaperId,
@@ -376,4 +377,32 @@ export const uploadStudySessionAttachment = async (
         size_bytes: file.size || file.buffer.length,
         mime: file.mimetype || "application/octet-stream",
     };
+};
+
+// Idempotent wrapper around session creation. Extraction can take longer than
+// a reverse proxy's timeout, so the client may see an error even though the
+// server finishes and saves the session; a retry then used to create a second
+// one. Concurrent identical requests share one run, and a retry shortly after
+// a completed run returns that session (without spending usage again).
+const inFlightCreations = new Map();
+
+export const createUserStudySession = async (userId, params) => {
+    const key = `${userId}:${params.questionPaperId}`;
+    if (inFlightCreations.has(key)) return inFlightCreations.get(key);
+
+    const run = (async () => {
+        const recent = await findRecentStudySessionForPaper(
+            userId,
+            params.questionPaperId
+        );
+        if (recent) {
+            return serializeSessionDetail(
+                await findStudySession(recent.id, userId)
+            );
+        }
+        return createUserStudySessionOnce(userId, params);
+    })().finally(() => inFlightCreations.delete(key));
+
+    inFlightCreations.set(key, run);
+    return run;
 };

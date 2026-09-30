@@ -300,6 +300,7 @@ export const createAppleUser = async ({
     email,
     appleUserId,
     password,
+    displayName = null,
 }) => {
 
     const sql = `
@@ -324,7 +325,7 @@ export const createAppleUser = async ({
         )
         VALUES
         (
-            ?, 0, ?, '', '', 0, 1, NOW(),
+            ?, 0, ?, ?, '', 0, 1, NOW(),
             ?, 1, 0, 'student', NOW(),
             'apple', ?, 0
         )
@@ -335,6 +336,7 @@ export const createAppleUser = async ({
         [
             password,
             username,
+            displayName ?? "",
             normalizeEmail(email),
             appleUserId,
         ]
@@ -591,4 +593,16 @@ export const deleteUserById = async (
 
     return result.affectedRows > 0;
 
+};
+
+export const updateUserDisplayName = async (
+    userId,
+    displayName,
+    connection = null
+) => {
+    await executeQuery(
+        "UPDATE api_user SET first_name = ? WHERE id = ?",
+        [String(displayName || "").trim().slice(0, 150), userId],
+        connection
+    );
 };

@@ -29,6 +29,17 @@ export const errorHandler = (err, req, res, next) => {
 
     console.error(err);
 
+    // OpenAI's own rate limit (shared by all users) — not the user's plan
+    // limit. Report it as "service busy" so the app doesn't show the
+    // "Limit Reached / Upgrade" dialog for it.
+    if (err?.status === 429 && !err.statusCode) {
+        return errorResponse(
+            res,
+            503,
+            "The AI service is busy right now. Please try again in a moment."
+        );
+    }
+
     return errorResponse(
         res,
         err.statusCode || 500,

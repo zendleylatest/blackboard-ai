@@ -26,6 +26,9 @@ export const completeProfileController = async (
                 class_level:
                     req.body.class_level,
 
+                full_name:
+                    req.body.full_name,
+
             });
 
         return successResponse(
