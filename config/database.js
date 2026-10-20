@@ -15,6 +15,12 @@ const pool = mysql.createPool({
     queueLimit: 0,
 
     charset: "utf8mb4",
+
+    // Idle pooled connections get dropped by MySQL / the network, so the next
+    // request that picked one up failed with ECONNRESET / "Connection lost"
+    // (the "server error sometimes"). Keep them alive.
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
 });
 
 export default pool;

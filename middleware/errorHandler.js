@@ -19,6 +19,20 @@ export const errorHandler = (err, req, res, next) => {
         );
     }
 
+    // Interrupted / malformed multipart uploads (flaky connection, app
+    // backgrounded mid-upload) are a client-side retry, not a server fault.
+    if (
+        err?.name === "MulterError" ||
+        /unexpected end of form|multipart|boundary/i.test(err?.message || "")
+    ) {
+        console.warn(`[UPLOAD] ${req.method} ${req.originalUrl}: ${err.message}`);
+        return errorResponse(
+            res,
+            400,
+            "The upload was interrupted. Please try again."
+        );
+    }
+
     if (err instanceof HttpError) {
         return errorResponse(
             res,

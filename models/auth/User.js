@@ -606,3 +606,18 @@ export const updateUserDisplayName = async (
         connection
     );
 };
+
+const lastTouched = new Map();
+const TOUCH_INTERVAL_MS = 10 * 60 * 1000;
+
+// Records that the user was just active (updates last_login), at most once
+// per TOUCH_INTERVAL_MS per user per server process.
+export const touchLastActive = (userId) => {
+    const now = Date.now();
+    if (now - (lastTouched.get(userId) || 0) < TOUCH_INTERVAL_MS) return;
+    lastTouched.set(userId, now);
+    executeQuery(
+        "UPDATE api_user SET last_login = NOW() WHERE id = ?",
+        [userId]
+    ).catch(() => lastTouched.delete(userId));
+};

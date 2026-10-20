@@ -77,6 +77,22 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
 
     const eventType = String(event.type || "");
 
+    // A store subscription can outlive the account that bought it. If this
+    // event is for a different app user than the one the purchase originally
+    // belonged to, and that original account no longer exists (deleted), the
+    // new account must NOT inherit the premium access.
+    const originalId = String(event.original_app_user_id || "");
+    if (
+        /^\d+$/.test(originalId) &&
+        originalId !== String(event.app_user_id) &&
+        ["INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION"].includes(eventType)
+    ) {
+        const originalUser = await findWebhookUser(originalId);
+        if (!originalUser) {
+            return { status: "ok", warning: "purchase_belongs_to_deleted_account" };
+        }
+    }
+
     // A manual admin grant ("promotional") is not a store purchase, so
     // RevenueCat knows nothing about it. Its cancellation/expiration/billing
     // events (e.g. for an old or transferred store purchase) must not wipe out
@@ -105,9 +121,20 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
             userId: user.id,
             appUserId: event.app_user_id,
             eventType,
-            tier: resolveTier(event.product_id),
-            productId: event.product_id,
-            store: String(event.store || "").toUpperCase().includes("APPLE")
+            // For PRODUCT_CHANGE, product_id is the OLD product and
+            // new_product_id the one switched to; using product_id kept
+            // upgrades/downgrades on the previous tier.
+            tier: resolveTier(
+                eventType === "PRODUCT_CHANGE" && event.new_product_id
+                    ? event.new_product_id
+                    : event.product_id
+            ),
+            productId: eventType === "PRODUCT_CHANGE" && event.new_product_id
+                ? event.new_product_id
+                : event.product_id,
+            // RevenueCat sends "APP_STORE" / "MAC_APP_STORE" for Apple, which
+            // the old check (looking for "APPLE") mislabelled as play_store.
+            store: /APP_STORE|APPLE/i.test(String(event.store || ""))
                 ? "app_store"
                 : "play_store",
             expiresAt: event.expiration_at_ms

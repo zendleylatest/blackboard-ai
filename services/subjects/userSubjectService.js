@@ -139,6 +139,16 @@ export const unenrollUserFromSubject = async (userId, subjectId) => {
             await connection.execute("DELETE FROM api_studysession WHERE id = ?", [id]);
         }
         
+        // Per-subject progress rows (not covered by the tables above)
+        try {
+            await connection.execute(
+                "DELETE FROM api_userprogress WHERE user_id = ? AND subject_id = ?",
+                [userId, subjectId]
+            );
+        } catch (error) {
+            if (error.code !== "ER_NO_SUCH_TABLE" && error.code !== "ER_ROW_IS_REFERENCED_2") throw error;
+        }
+
         // Finally, delete UserSubject enrollment
         const [result] = await connection.execute(
             "DELETE FROM api_usersubject WHERE user_id = ? AND subject_id = ?",

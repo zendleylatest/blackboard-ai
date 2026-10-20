@@ -4,6 +4,7 @@ import {
 
 import {
     findUserByIdSafe,
+    touchLastActive,
 } from "../models/auth/User.js";
 
 import HttpError from "../utils/httpError.js";
@@ -61,6 +62,11 @@ export const authenticate = async (
         }
 
         req.user = user;
+
+        // "Last login" must reflect real activity: apps stay signed in via
+        // refresh tokens, so the login endpoint alone leaves it stale/null.
+        // Throttled (once per 10 min per user) and never blocks the request.
+        touchLastActive(user.id);
 
         next();
 

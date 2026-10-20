@@ -7,6 +7,7 @@ import {
 } from "../../models/subjects/Subject.js";
 
 import HttpError from "../../utils/httpError.js";
+import { unenrollUserFromSubject as cascadeUnenroll } from "./userSubjectService.js";
 import { PAGE_SIZE, getPage } from "../../utils/pagination.js";
 
 export const getSubjects = async ({
@@ -121,30 +122,14 @@ export const unenrollUserFromSubject = async (
         };
     }
 
-    await deleteUserSubject(
-        userId,
-        subjectId
-    );
-
-    /*
-    |--------------------------------------------------------------------------
-    | ChatThread cleanup
-    |--------------------------------------------------------------------------
-    |
-    | Django deletes all chat threads for this user and subject after
-    | unenrollment. ChatThread is a separate feature, so the cleanup is
-    | intentionally kept isolated here rather than duplicating ChatThread
-    | logic in the subject model.
-    |
-    | This will be connected to the ChatThread model/service when that feature
-    | is migrated.
-    |--------------------------------------------------------------------------
-    */
-
-    let deletedChatThreads = 0;
+    // This is the handler behind DELETE /api/subjects/:id/unenroll/. It used
+    // to remove only the enrollment row, so quizzes, flashcards, study
+    // sessions and chats survived and reappeared when the subject was added
+    // again. Delegate to the cascading delete.
+    const result = await cascadeUnenroll(userId, subjectId);
 
     return {
         subject,
-        deletedChatThreads,
+        deletedChatThreads: result.deleted_chat_threads,
     };
 };

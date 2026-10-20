@@ -149,3 +149,12 @@ export const profileImageUrl = (storageKey) => {
     return baseUrl ? `${baseUrl}${mediaPath}` : mediaPath;
 };
 
+
+// Best-effort delete of a stored resource file (never throws).
+export const removeResourceFile = async (storageKey) => {
+    try {
+        await unlink(resolveWithin(resourcesDirectory, storageKey));
+    } catch {
+        // Already gone or invalid key: nothing to clean up.
+    }
+};

@@ -1,6 +1,7 @@
 import HttpError from "../../utils/httpError.js";
 import { getConnection } from "../../config/database.js";
 import { deleteDependentRows } from "../../utils/cascadeDelete.js";
+import { removeResourceFile } from "../../utils/localStorage.js";
 
 import {
     findUserByIdSafe,
@@ -26,6 +27,19 @@ export const deleteAccountService = async (
     }
 
     const connection = await getConnection();
+
+    // Uploaded files belong to the account too; remember them now, delete the
+    // files once the database rows are gone.
+    let uploadedKeys = [];
+    try {
+        const [rows] = await connection.execute(
+            "SELECT gcs_key FROM api_chatattachment WHERE uploader_id = ? AND gcs_key <> ''",
+            [user.id]
+        );
+        uploadedKeys = rows.map((row) => row.gcs_key);
+    } catch {
+        // Listing is best effort; the database delete below still runs.
+    }
 
     try {
 
@@ -97,6 +111,8 @@ export const deleteAccountService = async (
         connection.release();
 
     }
+
+    await Promise.all(uploadedKeys.map(removeResourceFile));
 
     console.info(
         `Account deleted: user_id=${user.id}, email=${user.email}`

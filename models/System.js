@@ -128,8 +128,12 @@ export const findUserStats = async (userId) => {
         [userId]
     );
     const level = profileRows[0]?.class_level || null;
-    const levelClause = level ? "AND sub.level = ?" : "";
-    const levelParams = level ? [level] : [];
+    // Count only subjects the user is still enrolled in: data belonging to
+    // removed subjects is hidden in the app, so it must not be counted.
+    const levelClause =
+        (level ? "AND sub.level = ? " : "") +
+        "AND sub.id IN (SELECT subject_id FROM api_usersubject WHERE user_id = ?)";
+    const levelParams = level ? [level, userId] : [userId];
 
     const [attemptRows, sessionRows, reviewRows] = await Promise.all([
         executeQuery(
