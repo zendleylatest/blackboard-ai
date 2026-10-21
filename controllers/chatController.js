@@ -11,6 +11,33 @@ const sseFrame = (event, payload) => (
 );
 
 export const sendChatMessageController = async (req, res, next) => {
+    const wantsSseEarly = String(req.headers.accept || "")
+        .toLowerCase()
+        .includes("text/event-stream");
+    let heartbeat = null;
+    let streamOpened = false;
+    const openStream = () => {
+        if (streamOpened || res.headersSent) return;
+        streamOpened = true;
+        res.status(200);
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders?.();
+        res.write(": open\n\n");
+        heartbeat = setInterval(() => res.write(": ping\n\n"), 10000);
+    };
+    // Fast failures (plan limit, validation) must still return a real HTTP
+    // status, so the stream only opens if the AI is taking a while. Opening
+    // it keeps the connection alive; headers used to be sent only after the
+    // full answer was ready, so slow generations got dropped with
+    // "Connection closed before full header was received".
+    const openTimer = wantsSseEarly ? setTimeout(openStream, 2500) : null;
+    res.on("close", () => {
+        clearTimeout(openTimer);
+        clearInterval(heartbeat);
+    });
     try {
         const result = await sendChatMessage(
             req.user.id,
@@ -27,11 +54,15 @@ export const sendChatMessageController = async (req, res, next) => {
             .toLowerCase()
             .includes("text/event-stream");
         if (wantsSse) {
-            res.status(200);
-            res.setHeader("Content-Type", "text/event-stream");
-            res.setHeader("Cache-Control", "no-cache");
-            res.setHeader("Connection", "keep-alive");
-            res.setHeader("X-Accel-Buffering", "no");
+            clearTimeout(openTimer);
+            clearInterval(heartbeat);
+            if (!res.headersSent) {
+                res.status(200);
+                res.setHeader("Content-Type", "text/event-stream");
+                res.setHeader("Cache-Control", "no-cache");
+                res.setHeader("Connection", "keep-alive");
+                res.setHeader("X-Accel-Buffering", "no");
+            }
             res.write(sseFrame("ack", { user: result.user }));
             res.write(sseFrame("delta", { text: result.assistant.text }));
             res.write(sseFrame("final", { assistant: result.assistant }));
@@ -39,6 +70,21 @@ export const sendChatMessageController = async (req, res, next) => {
         }
         return res.status(201).json(result);
     } catch (error) {
+        clearTimeout(openTimer);
+        clearInterval(heartbeat);
+        {
+            if (res.headersSent) {
+                // Headers already went out as a stream: report the failure
+                // as an SSE error event instead of an HTTP status.
+                res.write(sseFrame("error", {
+                    message: error?.statusCode === 429
+                        ? error.message
+                        : "Something went wrong. Please try again.",
+                    status: error?.statusCode || 500,
+                }));
+                return res.end();
+            }
+        }
         return next(error);
     }
 };
