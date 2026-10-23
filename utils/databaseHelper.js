@@ -22,7 +22,10 @@ export const executeQuery = async (
         // A stale pooled connection fails once; retry on a fresh one. Not done
         // on an explicit connection (transaction), where a retry would run
         // outside it.
-        if (!connection && TRANSIENT_CODES.has(error?.code)) {
+        // Only for reads: a write that dropped mid-flight may already have
+        // been applied, and retrying it could insert a duplicate.
+        const isRead = /^\s*SELECT\b/i.test(sql);
+        if (!connection && isRead && TRANSIENT_CODES.has(error?.code)) {
             const [rows] = await pool.execute(sql, params);
             return rows;
         }

@@ -196,7 +196,7 @@ export const checkUsageLimit = async (userId, featureName) => {
         isIosUser(userId),
         getOrCreateUsage(userId),
     ]);
-    const limitTier = tier === "free" && ios ? "plus" : tier;
+    const limitTier = tier; // Free means Free limits on every platform.
     const limit = feature.limits[limitTier] || feature.limits.free;
     const current = Number(usage[feature.column] || 0);
     if (current >= limit) {
@@ -246,7 +246,7 @@ export const checkSessionQuestionLimit = async (
     const limits = PER_QUESTION_LIMITS[featureName];
     if (!limits) return { allowed: true };
     const [tier, ios] = await Promise.all([getTier(userId), isIosUser(userId)]);
-    const limitTier = tier === "free" && ios ? "plus" : tier;
+    const limitTier = tier; // Free means Free limits on every platform.
     const limit = limits[limitTier] || limits.free;
     if (tier === "pro") return { allowed: true, tier };
     const rows = await executeQuery(
@@ -307,7 +307,7 @@ export const getUsageLimitSnapshot = async (userId) => {
         isIosUser(userId),
         getOrCreateUsage(userId),
     ]);
-    const limitTier = tier === "free" && ios ? "plus" : tier;
+    const limitTier = tier; // Free means Free limits on every platform.
     const serverNow = new Date();
     const weekEndDate = normalizeDate(usage.current_week_end);
     const resetAt = new Date(`${weekEndDate}T00:00:00`);

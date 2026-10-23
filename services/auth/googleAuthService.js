@@ -20,6 +20,7 @@ import {
 
 import {
     findPendingUserByEmail,
+    deletePendingUserByEmail,
 } from "../../models/auth/PendingUser.js";
 
 import {
@@ -414,16 +415,15 @@ export const googleAuthService = async ({
     |--------------------------------------------------------------------------
     */
 
+    // An unverified email/password sign-up that was abandoned must not lock
+    // the address out of Google sign-in. Google has already verified this
+    // email (checked above), so clear the stale pending registration and
+    // continue creating the Google account.
     const pendingUser =
         await findPendingUserByEmail(email);
 
     if (pendingUser) {
-
-        throw new HttpError(
-            "This email has a pending registration. Please verify your email first or use a different email.",
-            409
-        );
-
+        await deletePendingUserByEmail(email);
     }
 
     /*

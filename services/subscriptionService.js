@@ -145,3 +145,71 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
 
     return { status: "ok" };
 };
+
+/**
+ * Pull the user's real subscription state straight from RevenueCat and store
+ * it. The webhook is the normal path, but it can lag, arrive out of order
+ * (an upgrade's events) or never arrive (misconfigured URL), leaving the
+ * server - and therefore the usage limits - on the old plan. The app calls
+ * this right after a purchase/upgrade so limits follow immediately.
+ *
+ * Needs REVENUECAT_SECRET_API_KEY (RevenueCat > Project settings > API keys >
+ * secret key). Without it this is a no-op and the webhook stays the source.
+ */
+export const syncSubscriptionFromRevenueCat = async (userId) => {
+    const secret = process.env.REVENUECAT_SECRET_API_KEY || "";
+    if (!secret) return { status: "not_configured" };
+
+    // Never overwrite a still-valid manual admin grant.
+    const current = await findSubscriptionByUserId(userId);
+    if (
+        current?.store === "promotional" &&
+        current.is_active &&
+        (!current.expires_at || new Date(current.expires_at) > new Date())
+    ) {
+        return { status: "manual_grant" };
+    }
+
+    const response = await fetch(
+        `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(String(userId))}`,
+        { headers: { Authorization: `Bearer ${secret}`, Accept: "application/json" } }
+    );
+    if (!response.ok) {
+        throw new HttpError(502, "Could not reach the subscription service.");
+    }
+    const payload = await response.json();
+    const subscriptions = payload?.subscriber?.subscriptions || {};
+
+    // Highest active tier wins (an upgrade can briefly leave both active).
+    let best = null;
+    for (const [productId, info] of Object.entries(subscriptions)) {
+        const expires = info?.expires_date ? new Date(info.expires_date) : null;
+        if (expires && expires <= new Date()) continue;
+        const tier = resolveTier(productId);
+        if (tier === "free") continue;
+        const rank = tier === "pro" ? 2 : 1;
+        if (!best || rank > best.rank) {
+            best = {
+                rank,
+                tier,
+                productId,
+                expires,
+                store: /APP_STORE|APPLE/i.test(String(info?.store || ""))
+                    ? "app_store"
+                    : "play_store",
+                willRenew: !info?.unsubscribe_detected_at,
+            };
+        }
+    }
+
+    await upsertSubscriptionEvent({
+        userId,
+        appUserId: String(userId),
+        eventType: best ? "RENEWAL" : "EXPIRATION",
+        tier: best?.tier || "free",
+        productId: best?.productId || current?.product_id || null,
+        store: best?.store || current?.store || "app_store",
+        expiresAt: best?.expires || null,
+    });
+    return { status: "synced", tier: best?.tier || "free" };
+};

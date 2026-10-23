@@ -13,6 +13,9 @@ import {
     updateManagedUserController,
 } from "../controllers/adminUserController.js";
 import { authorizeAnalytics } from "../middleware/analyticsAuthMiddleware.js";
+import { broadcastNotification } from "../services/notificationService.js";
+import { successResponse } from "../utils/apiResponse.js";
+import { body } from "express-validator";
 import { validate } from "../middleware/validate.js";
 import {
     analyticsSummaryValidation,
@@ -81,6 +84,36 @@ router.delete(
     "/analytics/users/:userId/",
     authorizeAnalytics,
     deleteManagedUserController
+);
+
+// Push notification broadcast from the admin dashboard.
+router.post(
+    "/analytics/notifications/broadcast/",
+    authorizeAnalytics,
+    body("title").isString().trim().notEmpty().isLength({ max: 120 }),
+    body("body").isString().trim().notEmpty().isLength({ max: 500 }),
+    body("tier").optional({ nullable: true, values: "falsy" }).isIn(["free", "plus", "pro"]),
+    validate,
+    async (req, res, next) => {
+        try {
+            // Dashboard access may come through IAP (no req.user); it is
+            // already authorised by authorizeAnalytics.
+            const actor = req.user || { role: "admin" };
+            const data = await broadcastNotification(actor, {
+                title: req.body.title,
+                body: req.body.body,
+                tier: req.body.tier || null,
+            });
+            return successResponse(res, 200, "Notification broadcast completed.", data);
+        } catch (error) {
+            if (/credential|default credentials|Firebase/i.test(error?.message || "")) {
+                error.statusCode = 503;
+                error.message =
+                    "Push notifications are not configured on the server (Firebase credentials missing).";
+            }
+            return next(error);
+        }
+    }
 );
 
 export default router;

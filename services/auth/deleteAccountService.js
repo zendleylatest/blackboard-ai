@@ -65,6 +65,7 @@ export const deleteAccountService = async (
             ["api_aiusagelog", "user_id", user.id],
             ["api_devicetoken", "user_id", user.id],
             ["api_userusagelimit", "user_id", user.id],
+            ["api_userstatsarchive", "user_id", user.id],
             ["api_pendinguser", "email", user.email],
         ]) {
             try {

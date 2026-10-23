@@ -33,6 +33,7 @@ const optionalFeatureEnv = [
     "PUBLIC_BASE_URL",
     "APPLE_BUNDLE_ID",
     "REVENUECAT_WEBHOOK_AUTH_KEY",
+    "REVENUECAT_SECRET_API_KEY",
 ];
 
 export const validateEnvironment = () => {

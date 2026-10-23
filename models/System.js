@@ -174,11 +174,101 @@ export const findUserStats = async (userId) => {
         ),
     ]);
 
-    return {
-        attempts: attemptRows[0],
-        sessions: sessionRows[0],
-        reviews: reviewRows[0],
-    };
+    const attempts = { ...attemptRows[0] };
+    const sessions = { ...sessionRows[0] };
+    const reviews = { ...reviewRows[0] };
+
+    // Add totals archived from subjects the user has since removed, so
+    // removing a subject never lowers quizzes taken / flashcards studied /
+    // average score.
+    try {
+        const archived = await executeQuery(
+            `
+            SELECT
+                COALESCE(SUM(quizzes_taken), 0) AS quizzes_taken,
+                COALESCE(SUM(score_sum), 0) AS score_sum,
+                COALESCE(SUM(total_sum), 0) AS total_sum,
+                COALESCE(SUM(flashcard_sessions), 0) AS flashcard_sessions,
+                COALESCE(SUM(reviews), 0) AS reviews,
+                COALESCE(SUM(unique_cards), 0) AS unique_cards
+            FROM api_userstatsarchive
+            WHERE user_id = ? ${level ? "AND level = ?" : ""}
+            `,
+            level ? [userId, level] : [userId]
+        );
+        const a = archived[0] || {};
+        attempts.quizzes_taken = Number(attempts.quizzes_taken || 0) + Number(a.quizzes_taken || 0);
+        attempts.score_sum = Number(attempts.score_sum || 0) + Number(a.score_sum || 0);
+        attempts.total_sum = Number(attempts.total_sum || 0) + Number(a.total_sum || 0);
+        sessions.completed = Number(sessions.completed || 0) + Number(a.flashcard_sessions || 0);
+        reviews.reviews = Number(reviews.reviews || 0) + Number(a.reviews || 0);
+        reviews.unique_cards = Number(reviews.unique_cards || 0) + Number(a.unique_cards || 0);
+    } catch (error) {
+        if (error.code !== "ER_NO_SUCH_TABLE") throw error;
+    }
+
+    return { attempts, sessions, reviews };
+};
+
+let statsArchiveReady = null;
+
+// Created on demand (DDL must run outside a transaction).
+export const ensureStatsArchiveTable = () => {
+    statsArchiveReady ??= executeQuery(`
+        CREATE TABLE IF NOT EXISTS api_userstatsarchive (
+            user_id BIGINT NOT NULL,
+            level VARCHAR(10) NOT NULL,
+            quizzes_taken INT NOT NULL DEFAULT 0,
+            score_sum INT NOT NULL DEFAULT 0,
+            total_sum INT NOT NULL DEFAULT 0,
+            flashcard_sessions INT NOT NULL DEFAULT 0,
+            reviews INT NOT NULL DEFAULT 0,
+            unique_cards INT NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, level)
+        )
+    `).catch((error) => {
+        statsArchiveReady = null;
+        throw error;
+    });
+    return statsArchiveReady;
+};
+
+// Fold one subject's totals into the archive. Call inside the unenroll
+// transaction, BEFORE the subject's quizzes/flashcards are deleted.
+export const archiveSubjectStats = async (connection, userId, subjectId, level) => {
+    const [[att]] = await connection.execute(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(a.score),0) AS s, COALESCE(SUM(a.total),0) AS t
+         FROM api_quizattempt a INNER JOIN api_quiz q ON q.id = a.quiz_id
+         WHERE a.user_id = ? AND a.submitted_at IS NOT NULL AND q.subject_id = ?`,
+        [userId, subjectId]
+    );
+    const [[ses]] = await connection.execute(
+        `SELECT COUNT(*) AS n
+         FROM api_flashcardstudysession ss INNER JOIN api_flashcardset fs ON fs.id = ss.set_id
+         WHERE ss.user_id = ? AND ss.completed_at IS NOT NULL AND fs.subject_id = ?`,
+        [userId, subjectId]
+    );
+    const [[rev]] = await connection.execute(
+        `SELECT COUNT(*) AS n, COUNT(DISTINCT e.card_id) AS u
+         FROM api_flashcardreviewevent e
+         INNER JOIN api_flashcardstudysession ss ON ss.id = e.session_id
+         INNER JOIN api_flashcardset fs ON fs.id = ss.set_id
+         WHERE ss.user_id = ? AND fs.subject_id = ?`,
+        [userId, subjectId]
+    );
+    await connection.execute(
+        `INSERT INTO api_userstatsarchive
+            (user_id, level, quizzes_taken, score_sum, total_sum, flashcard_sessions, reviews, unique_cards)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            quizzes_taken = quizzes_taken + VALUES(quizzes_taken),
+            score_sum = score_sum + VALUES(score_sum),
+            total_sum = total_sum + VALUES(total_sum),
+            flashcard_sessions = flashcard_sessions + VALUES(flashcard_sessions),
+            reviews = reviews + VALUES(reviews),
+            unique_cards = unique_cards + VALUES(unique_cards)`,
+        [userId, level || "", Number(att.n), Number(att.s), Number(att.t), Number(ses.n), Number(rev.n), Number(rev.u)]
+    );
 };
 
 export const upsertAdminUser = async ({

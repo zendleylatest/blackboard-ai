@@ -10,6 +10,7 @@ import {
 } from "../chatThreadService.js";
 import pool, { getConnection } from "../../config/database.js";
 import { deleteDependentRows } from "../../utils/cascadeDelete.js";
+import { archiveSubjectStats, ensureStatsArchiveTable } from "../../models/System.js";
 
 /**
  * Enroll a user in an active subject.
@@ -94,10 +95,15 @@ export const unenrollUserFromSubject = async (userId, subjectId) => {
         throw error;
     }
 
+    await ensureStatsArchiveTable();
     const connection = await getConnection();
     try {
         await connection.beginTransaction();
         const dbName = process.env.DB_NAME;
+
+        // Keep the user's lifetime stats (quizzes taken, flashcards studied,
+        // average score) - they must not drop when a subject is removed.
+        await archiveSubjectStats(connection, userId, subjectId, subject.level);
 
         // Cascade delete ChatThreads
         const [threads] = await connection.execute(
