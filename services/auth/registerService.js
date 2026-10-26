@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 
 import HttpError from "../../utils/httpError.js";
+import { deleteAccountService } from "./deleteAccountService.js";
 
 import {
     generateOtp,
@@ -52,7 +53,20 @@ export const registerService = async (data) => {
     |--------------------------------------------------------------------------
     */
 
-    const existingUser = await findUserByEmail(email);
+    let existingUser = await findUserByEmail(email);
+
+    // A Google/Apple sign-in that was abandoned before the class level was
+    // chosen (profile never completed) is not a real account yet. Let the
+    // person register normally: discard the unfinished account first.
+    if (
+        existingUser &&
+        ["google", "apple"].includes(existingUser.auth_provider) &&
+        !existingUser.profile_completed
+    ) {
+        console.log(`[AUTH][REGISTER] Discarding unfinished ${existingUser.auth_provider} sign-in email=${maskEmail(email)}`);
+        await deleteAccountService(existingUser.id);
+        existingUser = null;
+    }
 
     if (existingUser) {
         console.log(`[AUTH][REGISTER] Existing user found email=${maskEmail(email)}`);

@@ -17,7 +17,9 @@ const EFFECTIVE_PLAN_SQL = `
 `;
 
 const buildFilters = ({ search, plan, startDate, endDate }) => {
-    const clauses = [];
+    // Google/Apple sign-ins that never finished choosing a class level are not
+    // real accounts yet; keep them out of the user list.
+    const clauses = ["(u.profile_completed = 1 OR LOWER(u.role) <> 'student')"];
     const params = [];
 
     const normalizedSearch = String(search || "").trim().toLowerCase();
