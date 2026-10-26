@@ -13,7 +13,10 @@ import {
     updateManagedUserController,
 } from "../controllers/adminUserController.js";
 import { authorizeAnalytics } from "../middleware/analyticsAuthMiddleware.js";
-import { broadcastNotification } from "../services/notificationService.js";
+import {
+    broadcastNotification,
+    getNotificationStatus,
+} from "../services/notificationService.js";
 import { successResponse } from "../utils/apiResponse.js";
 import { body } from "express-validator";
 import { validate } from "../middleware/validate.js";
@@ -86,6 +89,18 @@ router.delete(
     deleteManagedUserController
 );
 
+router.get(
+    "/analytics/notifications/status/",
+    authorizeAnalytics,
+    async (req, res, next) => {
+        try {
+            return successResponse(res, 200, "Notification status.", await getNotificationStatus());
+        } catch (error) {
+            return next(error);
+        }
+    }
+);
+
 // Push notification broadcast from the admin dashboard.
 router.post(
     "/analytics/notifications/broadcast/",
@@ -106,11 +121,6 @@ router.post(
             });
             return successResponse(res, 200, "Notification broadcast completed.", data);
         } catch (error) {
-            if (/credential|default credentials|Firebase/i.test(error?.message || "")) {
-                error.statusCode = 503;
-                error.message =
-                    "Push notifications are not configured on the server (Firebase credentials missing).";
-            }
             return next(error);
         }
     }
