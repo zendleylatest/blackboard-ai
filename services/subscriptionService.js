@@ -67,8 +67,12 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
     }
     if (event.type === "TEST") return { status: "ok" };
 
+    console.info(
+        `[SUBSCRIPTION] webhook ${event.type} app_user_id=${event.app_user_id} product=${event.product_id} new_product=${event.new_product_id || ""} store=${event.store}`
+    );
     const user = await findWebhookUser(event.app_user_id);
     if (!user) {
+        console.warn(`[SUBSCRIPTION] webhook user not found for app_user_id=${event.app_user_id}`);
         return {
             status: "ok",
             warning: "user_not_found",
@@ -158,7 +162,12 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
  */
 export const syncSubscriptionFromRevenueCat = async (userId) => {
     const secret = process.env.REVENUECAT_SECRET_API_KEY || "";
-    if (!secret) return { status: "not_configured" };
+    if (!secret) {
+        console.warn(
+            "[SUBSCRIPTION] sync skipped: REVENUECAT_SECRET_API_KEY is not set, so plans only update via the RevenueCat webhook."
+        );
+        return { status: "not_configured" };
+    }
 
     // Never overwrite a still-valid manual admin grant.
     const current = await findSubscriptionByUserId(userId);
@@ -202,6 +211,9 @@ export const syncSubscriptionFromRevenueCat = async (userId) => {
         }
     }
 
+    console.info(
+        `[SUBSCRIPTION] sync user=${userId} -> ${best?.tier || "free"} (${best?.productId || "none"})`
+    );
     await upsertSubscriptionEvent({
         userId,
         appUserId: String(userId),
