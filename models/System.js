@@ -128,12 +128,11 @@ export const findUserStats = async (userId) => {
         [userId]
     );
     const level = profileRows[0]?.class_level || null;
-    // Count only subjects the user is still enrolled in: data belonging to
-    // removed subjects is hidden in the app, so it must not be counted.
-    const levelClause =
-        (level ? "AND sub.level = ? " : "") +
-        "AND sub.id IN (SELECT subject_id FROM api_usersubject WHERE user_id = ?)";
-    const levelParams = level ? [level, userId] : [userId];
+    // Lifetime stats: removing a subject must NOT lower them. Removed
+    // subjects' totals are saved in api_userstatsarchive (added below), and
+    // data from before that existed is simply still counted here.
+    const levelClause = level ? "AND sub.level = ?" : "";
+    const levelParams = level ? [level] : [];
 
     const [attemptRows, sessionRows, reviewRows] = await Promise.all([
         executeQuery(
