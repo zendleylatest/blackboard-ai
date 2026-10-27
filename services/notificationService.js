@@ -11,15 +11,25 @@ export const registerDeviceToken = async (
     userId,
     { token, platform }
 ) => {
-    const created = await registerToken({
-        userId,
-        token,
-        platform,
-    });
-    return {
-        status: "registered",
-        created,
-    };
+    const short = typeof token === "string"
+        ? `${token.slice(0, 8)}...${token.slice(-6)} (len ${token.length})`
+        : String(token);
+    console.log(`[FCM] register request: user=${userId} platform=${platform} token=${short}`);
+    try {
+        const created = await registerToken({
+            userId,
+            token,
+            platform,
+        });
+        console.log(`[FCM] token ${created ? "stored (new)" : "already known / updated"} for user=${userId}`);
+        return {
+            status: "registered",
+            created,
+        };
+    } catch (error) {
+        console.error(`[FCM] storing token FAILED for user=${userId}: ${error.message}`);
+        throw error;
+    }
 };
 
 export const unregisterDeviceToken = async (userId, token) => {
