@@ -58,10 +58,40 @@ const getCredential = () => {
 
 export const getFirebaseMessaging = () => {
     if (getApps().length === 0) {
-        const options = { credential: getCredential() };
-        const projectId = (process.env.FIREBASE_PROJECT_ID || "").trim();
-        if (projectId) options.projectId = projectId;
-        initializeApp(options);
+        try {
+            const options = { credential: getCredential() };
+            const projectId = (process.env.FIREBASE_PROJECT_ID || "").trim();
+            if (projectId) options.projectId = projectId;
+            initializeApp(options);
+            console.log(
+                `[FIREBASE] Push notifications initialised (project: ${getApps()[0]?.options?.projectId || readServiceAccount()?.project_id || "default"}).`
+            );
+        } catch (error) {
+            console.error(
+                `[FIREBASE] Initialisation FAILED - push notifications will not work: ${error?.message || error}`
+            );
+            throw error;
+        }
     }
     return getMessaging();
+};
+
+/**
+ * Called once at server start so the log says right away whether push
+ * notifications are usable, instead of only failing at the first broadcast.
+ */
+export const logFirebaseStatus = () => {
+    if (!isFirebaseConfigured()) {
+        console.warn(
+            "[FIREBASE] Not configured - no service-account key found. Push notifications are DISABLED. " +
+            `Put the key at ${DEFAULT_KEY_FILE}, or set FIREBASE_SERVICE_ACCOUNT_PATH / FIREBASE_CREDENTIALS_JSON.`
+        );
+        return false;
+    }
+    try {
+        getFirebaseMessaging();
+        return true;
+    } catch {
+        return false; // getFirebaseMessaging already logged the reason
+    }
 };

@@ -8,6 +8,7 @@ import app from "./app.js";
 
 import { testConnection } from "./config/database.js";
 import { validateEnvironment } from "./config/env.js";
+import { logFirebaseStatus } from "./config/firebase.js";
 import { ensureDefaultAdmin } from "./services/defaultAdminService.js";
 import { ensureStorageDirectories } from "./utils/localStorage.js";
 
@@ -23,6 +24,8 @@ const startServer = async () => {
         await testConnection();
 
         await ensureDefaultAdmin();
+
+        logFirebaseStatus();
 
         const server = app.listen(PORT, () => {
             console.log(
