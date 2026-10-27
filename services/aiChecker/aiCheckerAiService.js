@@ -160,23 +160,17 @@ export const evaluateAnswerWithAi = async ({
     const uploadedFileIds = [];
     const userContent = [{ type: "input_text", text: user }];
     const completionUserContent = [{ type: "text", text: user }];
-    for (const document of sourceDocuments) {
-        if (!document?.gcs_key) continue;
+    // Read/upload every source in parallel (they used to go one by one), keeping
+    // the original order of the attachments in the prompt.
+    const prepared = await Promise.all(sourceDocuments.map(async (document) => {
+        if (!document?.gcs_key) return null;
         try {
             const buffer = await readResourceFile(document.gcs_key);
             const imageMime = imageMimeForDocument(document);
             if (imageMime) {
-                const imageUrl = `data:${imageMime};base64,${buffer.toString("base64")}`;
-                userContent.push({
-                    type: "input_image",
-                    image_url: imageUrl,
-                    detail: "auto",
-                });
-                completionUserContent.push({
-                    type: "image_url",
-                    image_url: { url: imageUrl, detail: "auto" },
-                });
-                continue;
+                return {
+                    imageUrl: `data:${imageMime};base64,${buffer.toString("base64")}`,
+                };
             }
             const file = await client.files.create({
                 file: await toFile(
@@ -187,13 +181,30 @@ export const evaluateAnswerWithAi = async ({
                 purpose: "user_data",
             });
             uploadedFileIds.push(file.id);
-            userContent.push({
-                type: "input_text",
-                text: `Attached source document: ${document.title || "document"}`,
-            });
-            userContent.push({ type: "input_file", file_id: file.id });
+            return { fileId: file.id, title: document.title || "document" };
         } catch {
             // Text and metadata remain usable if a source file is unavailable.
+            return null;
+        }
+    }));
+    for (const item of prepared) {
+        if (!item) continue;
+        if (item.imageUrl) {
+            userContent.push({
+                type: "input_image",
+                image_url: item.imageUrl,
+                detail: "auto",
+            });
+            completionUserContent.push({
+                type: "image_url",
+                image_url: { url: item.imageUrl, detail: "auto" },
+            });
+        } else {
+            userContent.push({
+                type: "input_text",
+                text: `Attached source document: ${item.title}`,
+            });
+            userContent.push({ type: "input_file", file_id: item.fileId });
         }
     }
     let response;
@@ -242,12 +253,9 @@ export const evaluateAnswerWithAi = async ({
             max_tokens: 3000,
         });
     }
+    // Cleanup is best effort and must not delay the response.
     for (const fileId of uploadedFileIds) {
-        try {
-            await client.files.delete(fileId);
-        } catch {
-            // Cleanup is best effort.
-        }
+        client.files.delete(fileId).catch(() => {});
     }
     const result = normalizeResult(
         extractToolJson(response, CHECKER_TOOL_SCHEMA.name),

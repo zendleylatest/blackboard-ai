@@ -215,6 +215,13 @@ export const submitSessionQuestionAnswer = async (
             question.question_subpart
         );
     }
+    const markSchemeText = mappings
+        .map((mapping) => mapping.mark_scheme_text)
+        .join("\n");
+    // The prompt already carries this question's text and its mark-scheme
+    // text, so re-uploading both full PDFs to the model on every answer only
+    // added upload time. Fall back to the PDFs when the text is missing.
+    const needsPaperFiles = !markSchemeText.trim() || !String(question.question_text || "").trim();
     const evaluation = await evaluateStudyQuestion({
         questionText: question.question_text,
         questionNumber: question.question_number,
@@ -222,11 +229,15 @@ export const submitSessionQuestionAnswer = async (
         questionSubpart: question.question_subpart,
         marksAvailable: question.marks_available,
         studentAnswer: String(answerText || "[See attached document]"),
-        markSchemeText: mappings.map((mapping) => mapping.mark_scheme_text).join("\n"),
+        markSchemeText,
         subjectCode: session.subject_code,
         sourceDocuments: [
-            await findDocumentById(session.qp_id),
-            await findDocumentById(session.ms_id),
+            ...(needsPaperFiles
+                ? [
+                    await findDocumentById(session.qp_id),
+                    await findDocumentById(session.ms_id),
+                ]
+                : []),
             ...attachments.map((attachment) => ({
                 title: attachment.filename || "student attachment",
                 gcs_key: attachment.gcs_key,

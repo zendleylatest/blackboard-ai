@@ -151,7 +151,13 @@ export const extractQuestionsFromDocuments = async ({
         // was needlessly doubling the upload latency on the critical path.
         [questionPaperFile, markSchemeFile] = await Promise.all([
             uploadOpenAiFile(client, questionPaper),
-            markScheme ? uploadOpenAiFile(client, markScheme) : Promise.resolve(null),
+            // Mark-scheme mappings already carry marks per question and are
+            // merged in below, so skip uploading/reading the second PDF when we
+            // have them; it roughly halves the slowest step of the first
+            // session on a paper.
+            markScheme && mappedQuestions.length === 0
+                ? uploadOpenAiFile(client, markScheme)
+                : Promise.resolve(null),
         ]);
         const startedAt = Date.now();
         
@@ -187,7 +193,7 @@ export const extractQuestionsFromDocuments = async ({
                     role: "system",
                     content: [{
                         type: "input_text",
-                        text: "Extract every question, part, and subpart from the question paper." + (markScheme ? " Use the mark scheme to verify marks." : "") + " Preserve exact text and return all questions through the provided function.",
+                        text: "Extract every question, part, and subpart from the question paper." + (markSchemeFile ? " Use the mark scheme to verify marks." : "") + " Preserve exact text and return all questions through the provided function.",
                     }],
                 },
                 {

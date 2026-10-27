@@ -1,8 +1,13 @@
 import HttpError from "../utils/httpError.js";
 import {
+    ensureOwnerTable,
     findSubscriptionByUserId,
+    findSubscriptionOwner,
     findWebhookUser,
+    markSubscriptionBlocked,
     upsertSubscriptionEvent,
+    upsertSubscriptionOwner,
+    userOwnsLiveSubscription,
 } from "../models/Subscription.js";
 
 const PRODUCT_TIERS = {
@@ -21,6 +26,67 @@ const resolveTier = (productId) => {
             : normalized.includes("plus")
                 ? "plus"
                 : "free");
+};
+
+const isStoreSubscriptionEvent = (type) => [
+    "INITIAL_PURCHASE",
+    "RENEWAL",
+    "PRODUCT_CHANGE",
+    "UNCANCELLATION",
+    "CANCELLATION",
+    "EXPIRATION",
+    "BILLING_ISSUE",
+].includes(type);
+
+/** All subscriptions RevenueCat has for an app user, or null if unavailable. */
+const fetchRevenueCatSubscriptions = async (appUserId) => {
+    const secret = process.env.REVENUECAT_SECRET_API_KEY || "";
+    if (!secret) return null;
+    const response = await fetch(
+        `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(String(appUserId))}`,
+        { headers: { Authorization: `Bearer ${secret}`, Accept: "application/json" } }
+    );
+    if (!response.ok) {
+        throw new HttpError(502, "Could not reach the subscription service.");
+    }
+    const payload = await response.json();
+    return payload?.subscriber?.subscriptions || {};
+};
+
+/**
+ * Identifies one underlying store subscription, independent of which app
+ * account RevenueCat currently attaches it to.
+ */
+const fingerprintFor = (productId, info) => {
+    const originalPurchase = info?.original_purchase_date
+        ? new Date(info.original_purchase_date).getTime()
+        : null;
+    return originalPurchase ? `${productId}|${originalPurchase}` : null;
+};
+
+/**
+ * Which app account owns this store subscription? The first account to claim
+ * it keeps it for as long as it is valid (a second account restoring the same
+ * Apple/Google subscription does not take it over). Once it has expired, or
+ * the owner's account no longer exists, anyone may claim it.
+ */
+const resolveSubscriptionOwner = async (userId, fingerprint, expiresAt) => {
+    await ensureOwnerTable();
+    const owner = await findSubscriptionOwner(fingerprint);
+    const ownerId = owner ? Number(owner.user_id) : null;
+
+    if (!owner || ownerId === Number(userId)) {
+        await upsertSubscriptionOwner(fingerprint, userId, expiresAt);
+        return Number(userId);
+    }
+    const ownerStillValid =
+        owner.expires_at &&
+        new Date(owner.expires_at) > new Date() &&
+        (await findWebhookUser(String(ownerId)));
+    if (ownerStillValid) return ownerId;
+
+    await upsertSubscriptionOwner(fingerprint, userId, expiresAt);
+    return Number(userId);
 };
 
 export const getSubscriptionStatus = async (userId) => {
@@ -44,6 +110,9 @@ export const getSubscriptionStatus = async (userId) => {
     return {
         tier: active ? subscription.tier : "free",
         is_active: active,
+        // True when this account tried to use a store subscription that is
+        // already linked to a different Blackboard AI account.
+        blocked: subscription.last_webhook_event === "BLOCKED_OTHER_ACCOUNT",
         product_id: subscription.product_id,
         store: subscription.store,
         expires_at: subscription.expires_at
@@ -97,12 +166,45 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
         }
     }
 
+    // The store subscription belongs to ONE app account. RevenueCat may attach
+    // it to whichever account restored last, so work out the real owner and
+    // apply the event to that account instead (the other one stays Free).
+    let target = user;
+    if (isStoreSubscriptionEvent(eventType) && process.env.REVENUECAT_SECRET_API_KEY) {
+        try {
+            const productId = eventType === "PRODUCT_CHANGE" && event.new_product_id
+                ? event.new_product_id
+                : event.product_id;
+            const subscriptions = await fetchRevenueCatSubscriptions(event.app_user_id);
+            const info = subscriptions?.[productId];
+            const fingerprint = fingerprintFor(productId, info);
+            if (fingerprint) {
+                const expires = info?.expires_date ? new Date(info.expires_date) : null;
+                const ownerId = await resolveSubscriptionOwner(user.id, fingerprint, expires);
+                if (ownerId !== Number(user.id)) {
+                    console.warn(
+                        `[SUBSCRIPTION] ${eventType} for user ${user.id} belongs to account ${ownerId}; applying it there`
+                    );
+                    if (["INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION"].includes(eventType)) {
+                        const mine = await findSubscriptionByUserId(user.id);
+                        const hasOwnGrant = mine?.store === "promotional" && mine.is_active;
+                        if (!hasOwnGrant) await markSubscriptionBlocked(user.id);
+                    }
+                    target = { id: ownerId, email: "" };
+                }
+            }
+        } catch (error) {
+            // Fail open: if ownership can't be checked, behave as before.
+            console.warn(`[SUBSCRIPTION] ownership check skipped: ${error.message}`);
+        }
+    }
+
     // A manual admin grant ("promotional") is not a store purchase, so
     // RevenueCat knows nothing about it. Its cancellation/expiration/billing
     // events (e.g. for an old or transferred store purchase) must not wipe out
     // a grant that is still valid. Real purchase events still take over.
     if (["CANCELLATION", "EXPIRATION", "BILLING_ISSUE"].includes(eventType)) {
-        const current = await findSubscriptionByUserId(user.id);
+        const current = await findSubscriptionByUserId(target.id);
         const grantStillValid = current &&
             current.store === "promotional" &&
             current.is_active &&
@@ -122,8 +224,8 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
         "BILLING_ISSUE",
     ].includes(eventType)) {
         await upsertSubscriptionEvent({
-            userId: user.id,
-            appUserId: event.app_user_id,
+            userId: target.id,
+            appUserId: String(target.id === user.id ? event.app_user_id : target.id),
             eventType,
             // For PRODUCT_CHANGE, product_id is the OLD product and
             // new_product_id the one switched to; using product_id kept
@@ -179,23 +281,27 @@ export const syncSubscriptionFromRevenueCat = async (userId) => {
         return { status: "manual_grant" };
     }
 
-    const response = await fetch(
-        `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(String(userId))}`,
-        { headers: { Authorization: `Bearer ${secret}`, Accept: "application/json" } }
-    );
-    if (!response.ok) {
-        throw new HttpError(502, "Could not reach the subscription service.");
-    }
-    const payload = await response.json();
-    const subscriptions = payload?.subscriber?.subscriptions || {};
+    const subscriptions = await fetchRevenueCatSubscriptions(userId);
 
-    // Highest active tier wins (an upgrade can briefly leave both active).
+    // Highest active tier wins (an upgrade can briefly leave both active),
+    // but only among subscriptions this account actually owns.
     let best = null;
-    for (const [productId, info] of Object.entries(subscriptions)) {
+    let blockedByOther = false;
+    for (const [productId, info] of Object.entries(subscriptions || {})) {
         const expires = info?.expires_date ? new Date(info.expires_date) : null;
         if (expires && expires <= new Date()) continue;
         const tier = resolveTier(productId);
         if (tier === "free") continue;
+
+        const fingerprint = fingerprintFor(productId, info);
+        if (fingerprint) {
+            const ownerId = await resolveSubscriptionOwner(userId, fingerprint, expires);
+            if (ownerId !== Number(userId)) {
+                blockedByOther = true;
+                continue;
+            }
+        }
+
         const rank = tier === "pro" ? 2 : 1;
         if (!best || rank > best.rank) {
             best = {
@@ -209,6 +315,20 @@ export const syncSubscriptionFromRevenueCat = async (userId) => {
                 willRenew: !info?.unsubscribe_detected_at,
             };
         }
+    }
+
+    if (!best && blockedByOther) {
+        // Another account owns this Apple/Google subscription: stay Free.
+        await markSubscriptionBlocked(userId);
+        console.info(`[SUBSCRIPTION] sync user=${userId} blocked: subscription belongs to another account`);
+        return { status: "owned_by_other_account", tier: "free" };
+    }
+
+    if (!best && (await userOwnsLiveSubscription(userId))) {
+        // RevenueCat has moved the subscription to another account (e.g. after
+        // a restore there), but it is still valid and still ours: keep it.
+        console.info(`[SUBSCRIPTION] sync user=${userId}: keeping owned subscription despite RevenueCat transfer`);
+        return { status: "kept_owned", tier: (await findSubscriptionByUserId(userId))?.tier || "free" };
     }
 
     console.info(

@@ -28,8 +28,11 @@ export const revenueCatWebhookController = async (req, res, next) => {
 
 export const syncSubscriptionController = async (req, res, next) => {
     try {
-        await syncSubscriptionFromRevenueCat(req.user.id);
-        const data = await getSubscriptionStatus(req.user.id);
+        const result = await syncSubscriptionFromRevenueCat(req.user.id);
+        const data = {
+            ...(await getSubscriptionStatus(req.user.id)),
+            sync_status: result?.status,
+        };
         return successResponse(res, 200, "Subscription synced.", data);
     } catch (error) {
         next(error);

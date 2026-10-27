@@ -109,3 +109,86 @@ export const upsertSubscriptionEvent = async ({
         ]
     );
 };
+
+/*
+|--------------------------------------------------------------------------
+| Store-subscription ownership
+|--------------------------------------------------------------------------
+| An Apple/Google subscription belongs to the store account, not to a Blackboard
+| AI account. RevenueCat will happily "transfer" it to whichever app account
+| restores last, so the server records which app account first claimed each
+| subscription and refuses to hand a still-valid one to a second account.
+| The key ("fingerprint") is product + original purchase time, which is the same
+| for every app account that sees that one underlying subscription.
+*/
+
+let ownerTableReady = null;
+
+export const ensureOwnerTable = () => {
+    ownerTableReady ??= executeQuery(`
+        CREATE TABLE IF NOT EXISTS api_subscriptionowner (
+            fingerprint VARCHAR(190) NOT NULL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            expires_at DATETIME(6) NULL,
+            updated_at DATETIME(6) NOT NULL
+        )
+    `).catch((error) => {
+        ownerTableReady = null;
+        throw error;
+    });
+    return ownerTableReady;
+};
+
+export const findSubscriptionOwner = async (fingerprint) => {
+    const rows = await executeQuery(
+        "SELECT fingerprint, user_id, expires_at FROM api_subscriptionowner WHERE fingerprint = ? LIMIT 1",
+        [fingerprint]
+    );
+    return rows[0] || null;
+};
+
+export const upsertSubscriptionOwner = (fingerprint, userId, expiresAt) =>
+    executeQuery(
+        `
+        INSERT INTO api_subscriptionowner (fingerprint, user_id, expires_at, updated_at)
+        VALUES (?, ?, ?, NOW(6))
+        ON DUPLICATE KEY UPDATE
+            user_id = VALUES(user_id),
+            expires_at = VALUES(expires_at),
+            updated_at = NOW(6)
+        `,
+        [fingerprint, userId, expiresAt]
+    );
+
+/** Does this user still own a store subscription that hasn't expired? */
+export const userOwnsLiveSubscription = async (userId) => {
+    const rows = await executeQuery(
+        `
+        SELECT 1 FROM api_subscriptionowner
+        WHERE user_id = ? AND expires_at IS NOT NULL AND expires_at > NOW(6)
+        LIMIT 1
+        `,
+        [userId]
+    );
+    return rows.length > 0;
+};
+
+/** Mark an account as "tried to use a subscription owned by another account". */
+export const markSubscriptionBlocked = (userId) =>
+    executeQuery(
+        `
+        INSERT INTO api_usersubscription (
+            tier, revenuecat_app_user_id, store, product_id,
+            is_active, expires_at, original_purchase_date,
+            cancellation_date, last_webhook_event,
+            created_at, updated_at, user_id
+        )
+        VALUES ('free', ?, 'app_store', NULL, 0, NULL, NULL, NULL,
+                'BLOCKED_OTHER_ACCOUNT', NOW(), NOW(), ?)
+        ON DUPLICATE KEY UPDATE
+            tier = 'free', is_active = 0,
+            last_webhook_event = 'BLOCKED_OTHER_ACCOUNT',
+            updated_at = NOW()
+        `,
+        [String(userId), userId]
+    );
