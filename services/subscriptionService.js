@@ -3,6 +3,8 @@ import {
     ensureOwnerTable,
     findSubscriptionByUserId,
     findSubscriptionOwner,
+    userAccountExists,
+    extendOwnerExpiry,
     findWebhookUser,
     markSubscriptionBlocked,
     upsertSubscriptionEvent,
@@ -70,6 +72,9 @@ const fingerprintFor = (productId, info) => {
  * Apple/Google subscription does not take it over). Once it has expired, or
  * the owner's account no longer exists, anyone may claim it.
  */
+// Returned by resolveSubscriptionOwner when the owning account was deleted.
+const ORPHANED_OWNER = -1;
+
 const resolveSubscriptionOwner = async (userId, fingerprint, expiresAt) => {
     await ensureOwnerTable();
     const owner = await findSubscriptionOwner(fingerprint);
@@ -79,11 +84,20 @@ const resolveSubscriptionOwner = async (userId, fingerprint, expiresAt) => {
         await upsertSubscriptionOwner(fingerprint, userId, expiresAt);
         return Number(userId);
     }
-    const ownerStillValid =
-        owner.expires_at &&
-        new Date(owner.expires_at) > new Date() &&
-        (await findWebhookUser(String(ownerId)));
-    if (ownerStillValid) return ownerId;
+    const ownerStillLive =
+        owner.expires_at && new Date(owner.expires_at) > new Date();
+    if (ownerStillLive) {
+        if (await userAccountExists(ownerId)) return ownerId;
+        // The owner deleted their account, but the Apple/Google subscription
+        // is still running on that store account. Deleting the account
+        // revokes premium for it, and the subscription must NOT pass to
+        // whoever signs up next on the same device: nobody owns it until it
+        // actually expires.
+        if (expiresAt && new Date(expiresAt) > new Date(owner.expires_at)) {
+            await extendOwnerExpiry(fingerprint, expiresAt);
+        }
+        return ORPHANED_OWNER;
+    }
 
     await upsertSubscriptionOwner(fingerprint, userId, expiresAt);
     return Number(userId);
@@ -181,6 +195,16 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
             if (fingerprint) {
                 const expires = info?.expires_date ? new Date(info.expires_date) : null;
                 const ownerId = await resolveSubscriptionOwner(user.id, fingerprint, expires);
+                if (ownerId === ORPHANED_OWNER) {
+                    console.warn(
+                        `[SUBSCRIPTION] ${eventType} for user ${user.id} ignored: the subscription belongs to a deleted account`
+                    );
+                    const mine = await findSubscriptionByUserId(user.id);
+                    if (!(mine?.store === "promotional" && mine.is_active)) {
+                        await markSubscriptionBlocked(user.id);
+                    }
+                    return { status: "ok", warning: "purchase_belongs_to_deleted_account" };
+                }
                 if (ownerId !== Number(user.id)) {
                     console.warn(
                         `[SUBSCRIPTION] ${eventType} for user ${user.id} belongs to account ${ownerId}; applying it there`

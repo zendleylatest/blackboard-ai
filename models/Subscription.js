@@ -160,6 +160,30 @@ export const upsertSubscriptionOwner = (fingerprint, userId, expiresAt) =>
         [fingerprint, userId, expiresAt]
     );
 
+/** Does an account with this id still exist? */
+export const userAccountExists = async (userId) => {
+    const rows = await executeQuery(
+        "SELECT 1 FROM api_user WHERE id = ? LIMIT 1",
+        [userId]
+    );
+    return rows.length > 0;
+};
+
+/**
+ * Keep an orphaned subscription (its owner's account was deleted) locked: its
+ * stored expiry follows the real one, so a later account cannot claim it just
+ * because the old expiry date passed while the store keeps renewing it.
+ */
+export const extendOwnerExpiry = (fingerprint, expiresAt) =>
+    executeQuery(
+        `
+        UPDATE api_subscriptionowner
+        SET expires_at = ?, updated_at = NOW(6)
+        WHERE fingerprint = ? AND (expires_at IS NULL OR expires_at < ?)
+        `,
+        [expiresAt, fingerprint, expiresAt]
+    );
+
 /** Does this user still own a store subscription that hasn't expired? */
 export const userOwnsLiveSubscription = async (userId) => {
     const rows = await executeQuery(
