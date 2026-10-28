@@ -35,6 +35,24 @@ export const findWebhookUser = async (appUserId) => {
     return rows[0] || null;
 };
 
+/**
+ * The user turned auto-renew off. They have already paid for the current
+ * period, so tier and access stay exactly as they are until it ends (the
+ * EXPIRATION event, or expires_at passing, is what revokes them).
+ */
+export const markSubscriptionCancelled = (userId, expiresAt = null) =>
+    executeQuery(
+        `
+        UPDATE api_usersubscription
+        SET cancellation_date = COALESCE(cancellation_date, NOW()),
+            expires_at = COALESCE(?, expires_at),
+            last_webhook_event = 'CANCELLATION',
+            updated_at = NOW()
+        WHERE user_id = ?
+        `,
+        [expiresAt, userId]
+    );
+
 export const upsertSubscriptionEvent = async ({
     userId,
     appUserId,
@@ -43,6 +61,7 @@ export const upsertSubscriptionEvent = async ({
     productId,
     store,
     expiresAt,
+    willRenew = true,
 }) => {
     const isActivation = [
         "INITIAL_PURCHASE",
@@ -108,6 +127,16 @@ export const upsertSubscriptionEvent = async ({
             isCancellation,
         ]
     );
+
+    // An activation resets the cancelled flag. When the store says the
+    // subscription is still running but will not renew, keep it flagged so
+    // the app can show "access until <date>".
+    if (isActivation && willRenew === false) {
+        await executeQuery(
+            "UPDATE api_usersubscription SET cancellation_date = COALESCE(cancellation_date, NOW()) WHERE user_id = ?",
+            [userId]
+        );
+    }
 };
 
 /*

@@ -4,6 +4,7 @@ import {
     findSubscriptionByUserId,
     findSubscriptionOwner,
     userAccountExists,
+    markSubscriptionCancelled,
     extendOwnerExpiry,
     findWebhookUser,
     markSubscriptionBlocked,
@@ -127,6 +128,8 @@ export const getSubscriptionStatus = async (userId) => {
         // True when this account tried to use a store subscription that is
         // already linked to a different Blackboard AI account.
         blocked: subscription.last_webhook_event === "BLOCKED_OTHER_ACCOUNT",
+        // False once the user cancelled: access continues until expires_at.
+        will_renew: active ? !subscription.cancellation_date : false,
         product_id: subscription.product_id,
         store: subscription.store,
         expires_at: subscription.expires_at
@@ -235,6 +238,43 @@ export const processRevenueCatWebhook = async (authorization, payload) => {
             (!current.expires_at || new Date(current.expires_at) > new Date());
         if (grantStillValid) {
             return { status: "ok", warning: "manual_grant_preserved" };
+        }
+    }
+
+    const tierRank = (tier) => ({ free: 0, plus: 1, pro: 2 }[tier] || 0);
+
+    // CANCELLATION means "auto-renew was turned off" - the customer has paid
+    // for the current period and keeps full access until it ends (EXPIRATION
+    // is the event that ends it). Only a refund revokes access immediately.
+    if (eventType === "CANCELLATION") {
+        const current = await findSubscriptionByUserId(target.id);
+        const refunded = String(event.cancel_reason || "").toUpperCase() === "CUSTOMER_SUPPORT";
+        const periodEnd = event.expiration_at_ms
+            ? new Date(Number(event.expiration_at_ms))
+            : (current?.expires_at ? new Date(current.expires_at) : null);
+        if (current && !refunded && periodEnd && periodEnd > new Date()) {
+            await markSubscriptionCancelled(target.id, periodEnd);
+            console.info(`[SUBSCRIPTION] user ${target.id} cancelled; access kept until ${periodEnd.toISOString()}`);
+            return { status: "ok", warning: "cancelled_access_kept_until_period_end" };
+        }
+    }
+
+    // A downgrade (e.g. Pro -> Plus) only takes effect when the period the
+    // customer already paid for ends. Until then they keep the higher plan; the
+    // store sends the renewal for the new plan at that point.
+    if (eventType === "PRODUCT_CHANGE" && event.new_product_id) {
+        const current = await findSubscriptionByUserId(target.id);
+        const newTier = resolveTier(event.new_product_id);
+        if (
+            current?.is_active &&
+            current.expires_at &&
+            new Date(current.expires_at) > new Date() &&
+            tierRank(newTier) < tierRank(String(current.tier || "free").toLowerCase())
+        ) {
+            console.info(
+                `[SUBSCRIPTION] user ${target.id}: downgrade to ${newTier} deferred until ${new Date(current.expires_at).toISOString()}`
+            );
+            return { status: "ok", warning: "downgrade_deferred_until_period_end" };
         }
     }
 
@@ -366,6 +406,7 @@ export const syncSubscriptionFromRevenueCat = async (userId) => {
         productId: best?.productId || current?.product_id || null,
         store: best?.store || current?.store || "app_store",
         expiresAt: best?.expires || null,
+        willRenew: best ? best.willRenew : true,
     });
     return { status: "synced", tier: best?.tier || "free" };
 };
