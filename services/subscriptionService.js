@@ -4,6 +4,7 @@ import {
     findSubscriptionByUserId,
     findSubscriptionOwner,
     userAccountExists,
+    isSameIdentityAsOwner,
     markSubscriptionCancelled,
     extendOwnerExpiry,
     findWebhookUser,
@@ -74,9 +75,9 @@ const fingerprintFor = (productId, info) => {
  * the owner's account no longer exists, anyone may claim it.
  */
 // Returned by resolveSubscriptionOwner when the owning account was deleted.
-const ORPHANED_OWNER = -1;
+export const ORPHANED_OWNER = -1;
 
-const resolveSubscriptionOwner = async (userId, fingerprint, expiresAt) => {
+export const resolveSubscriptionOwner = async (userId, fingerprint, expiresAt) => {
     await ensureOwnerTable();
     const owner = await findSubscriptionOwner(fingerprint);
     const ownerId = owner ? Number(owner.user_id) : null;
@@ -90,10 +91,13 @@ const resolveSubscriptionOwner = async (userId, fingerprint, expiresAt) => {
     if (ownerStillLive) {
         if (await userAccountExists(ownerId)) return ownerId;
         // The owner deleted their account, but the Apple/Google subscription
-        // is still running on that store account. Deleting the account
-        // revokes premium for it, and the subscription must NOT pass to
-        // whoever signs up next on the same device: nobody owns it until it
-        // actually expires.
+        // is still running on that store account. It must NOT pass to just
+        // anyone who signs up next on the same device, but the same person
+        // (same Apple ID / email) re-creating their account gets it back.
+        if (await isSameIdentityAsOwner(userId, owner)) {
+            await upsertSubscriptionOwner(fingerprint, userId, expiresAt);
+            return Number(userId);
+        }
         if (expiresAt && new Date(expiresAt) > new Date(owner.expires_at)) {
             await extendOwnerExpiry(fingerprint, expiresAt);
         }

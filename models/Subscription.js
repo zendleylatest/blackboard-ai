@@ -159,9 +159,22 @@ export const ensureOwnerTable = () => {
             fingerprint VARCHAR(190) NOT NULL PRIMARY KEY,
             user_id BIGINT NOT NULL,
             expires_at DATETIME(6) NULL,
-            updated_at DATETIME(6) NOT NULL
+            updated_at DATETIME(6) NOT NULL,
+            owner_email VARCHAR(255) NULL,
+            owner_apple_id VARCHAR(255) NULL
         )
-    `).catch((error) => {
+    `).then(async () => {
+        // Tables created before these columns existed.
+        for (const column of ["owner_email", "owner_apple_id"]) {
+            try {
+                await executeQuery(
+                    `ALTER TABLE api_subscriptionowner ADD COLUMN ${column} VARCHAR(255) NULL`
+                );
+            } catch (_) {
+                // Column already exists.
+            }
+        }
+    }).catch((error) => {
         ownerTableReady = null;
         throw error;
     });
@@ -170,24 +183,52 @@ export const ensureOwnerTable = () => {
 
 export const findSubscriptionOwner = async (fingerprint) => {
     const rows = await executeQuery(
-        "SELECT fingerprint, user_id, expires_at FROM api_subscriptionowner WHERE fingerprint = ? LIMIT 1",
+        "SELECT fingerprint, user_id, expires_at, owner_email, owner_apple_id FROM api_subscriptionowner WHERE fingerprint = ? LIMIT 1",
         [fingerprint]
     );
     return rows[0] || null;
 };
 
-export const upsertSubscriptionOwner = (fingerprint, userId, expiresAt) =>
-    executeQuery(
+export const upsertSubscriptionOwner = async (fingerprint, userId, expiresAt) => {
+    // Remember who the owner was: once the account row is deleted, this is
+    // how the same person signing up again is recognised.
+    const users = await executeQuery(
+        "SELECT email, apple_user_id FROM api_user WHERE id = ? LIMIT 1",
+        [userId]
+    );
+    const email = users[0]?.email ? String(users[0].email).toLowerCase() : null;
+    const appleId = users[0]?.apple_user_id || null;
+    await executeQuery(
         `
-        INSERT INTO api_subscriptionowner (fingerprint, user_id, expires_at, updated_at)
-        VALUES (?, ?, ?, NOW(6))
+        INSERT INTO api_subscriptionowner
+            (fingerprint, user_id, expires_at, updated_at, owner_email, owner_apple_id)
+        VALUES (?, ?, ?, NOW(6), ?, ?)
         ON DUPLICATE KEY UPDATE
             user_id = VALUES(user_id),
             expires_at = VALUES(expires_at),
+            owner_email = VALUES(owner_email),
+            owner_apple_id = VALUES(owner_apple_id),
             updated_at = NOW(6)
         `,
-        [fingerprint, userId, expiresAt]
+        [fingerprint, userId, expiresAt, email, appleId]
     );
+};
+
+/** Is this account the same person as the (deleted) owner record? */
+export const isSameIdentityAsOwner = async (userId, owner) => {
+    const users = await executeQuery(
+        "SELECT email, apple_user_id FROM api_user WHERE id = ? LIMIT 1",
+        [userId]
+    );
+    const user = users[0];
+    if (!user) return false;
+    const email = user.email ? String(user.email).toLowerCase() : null;
+    return Boolean(
+        (owner.owner_apple_id && user.apple_user_id &&
+            owner.owner_apple_id === user.apple_user_id) ||
+        (owner.owner_email && email && owner.owner_email === email)
+    );
+};
 
 /** Does an account with this id still exist? */
 export const userAccountExists = async (userId) => {
